@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 — 2026-08-29
+
+- Fix: a swipe or drag that ended over a Pressable fired the press. The
+  shell now cancels React's in-flight touch whenever it takes over the
+  gesture — page-list scroll start, pager (tab) drag start, and header/tab
+  strip drags — on iOS (`RCTSurfaceTouchHandler`) and Android
+  (`NativeGestureUtil.notifyNativeGestureStarted`).
+- Fix: horizontal drags on the header are now claimed (still inert) so the
+  button under the finger doesn't fire on release.
+- Fix (iOS): on a fresh launch the header didn't follow a plain list scroll
+  until the header was touched once — the active page's scroll view is now
+  discovered eagerly (with a short retry for lazily mounted lists).
+
 ## 0.1.0 — 2026-08-29
 
 Initial release.

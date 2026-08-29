@@ -31,6 +31,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public var onPageSelected: ((Int) -> Void)?
   @objc public var onCollapsedChange: ((Bool) -> Void)?
   @objc public var onRefresh: (() -> Void)?
+  /// Provided by the host: cancels React's in-flight JS touches so a press
+  /// under the finger never fires once a scroll or drag has begun.
+  @objc public var cancelReactTouches: (() -> Void)?
 
   // MARK: - Native subviews
 
@@ -191,6 +194,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       // Subtree is already mounted (Fabric inserts bottom-up), so the page's
       // list can be aligned to the header right away.
       if pendingSync[page] != nil { trySync(page) }
+      if page == activeIndex { ensureActiveScrollViewObserved() }
     }
   }
 
@@ -271,6 +275,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if w > 0, pager.contentOffset.x != CGFloat(selectedIndex) * w, !userDragging {
       pager.contentOffset = CGPoint(x: CGFloat(selectedIndex) * w, y: 0)
     }
+    if w > 0 { ensureActiveScrollViewObserved() }
   }
 
   private func applyBandTransform() {
@@ -301,6 +306,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if pendingSync[activeIndex] != nil, target < headerOffset { return }
     pull = max(0, -y)
     setHeaderOffsetNow(target)
+  }
+
+  /// A page list started dragging: whatever React press was armed under the
+  /// finger must not fire on release.
+  @objc public func handleScrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    cancelReactTouches?()
   }
 
   @objc public func handleScrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
@@ -354,6 +365,23 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   private func activeScrollView() -> UIScrollView? { scrollView(for: activeIndex) }
+
+  /// Discovery is lazy (`scrollView(for:)`), and a page's list mounts a
+  /// Fabric commit *after* its wrapper — so unless something resolved the
+  /// active page's scroll view, a plain list scroll would never reach the
+  /// collapse engine (the header only started following once a header pan
+  /// forced the lookup). Resolve eagerly, retrying briefly for late mounts.
+  private var discoveryRetries = 0
+
+  private func ensureActiveScrollViewObserved(reset: Bool = true) {
+    if reset { discoveryRetries = 0 }
+    if activeScrollView() != nil { return }
+    guard discoveryRetries < 30 else { return }
+    discoveryRetries += 1
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.ensureActiveScrollViewObserved(reset: false)
+    }
+  }
 
   /// A neighbour must show its content at the height the header is at:
   /// fully collapsed → the page's own scroll, but never above the collapse
@@ -431,6 +459,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private func activate(_ index: Int) {
     activeIndex = index
     selectedIndex = index
+    ensureActiveScrollViewObserved()
     reconcileHeaderToActive()
     if lastEmittedIndex != index {
       lastEmittedIndex = index
@@ -443,7 +472,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   public func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-    if scrollView === pager { userDragging = true }
+    if scrollView === pager {
+      userDragging = true
+      cancelReactTouches?()
+    }
   }
 
   public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
@@ -519,8 +551,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
     guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
     let v = pan.velocity(in: self)
-    // Vertical only: the tab strip is its own horizontal scroller and the
-    // header is deliberately not a paging surface.
+    // Header: any direction — vertical drags scroll the page, horizontal
+    // ones are swallowed (inert by design, but they must still cancel the
+    // press under the finger). Tab strip: vertical only, it scrolls itself
+    // horizontally.
+    if pan.view === headerSlot { return true }
     return abs(v.y) > abs(v.x) * 1.5
   }
 
@@ -529,10 +564,23 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     true
   }
 
+  /// True while a horizontal header drag is being swallowed.
+  private var swallowingPan = false
+
   @objc private func handleBandPan(_ pan: UIPanGestureRecognizer) {
+    if pan.state == .began {
+      let v = pan.velocity(in: self)
+      swallowingPan = pan.view === headerSlot && abs(v.x) > abs(v.y) * 1.5
+      if swallowingPan { cancelReactTouches?() }
+    }
+    if swallowingPan {
+      if pan.state == .ended || pan.state == .cancelled { swallowingPan = false }
+      return
+    }
     guard let sv = activeScrollView() else { return }
     switch pan.state {
     case .began:
+      cancelReactTouches?()
       fling?.stop()
       fling = nil
       sv.setContentOffset(sv.contentOffset, animated: false)

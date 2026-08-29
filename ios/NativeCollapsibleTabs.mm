@@ -23,6 +23,7 @@
 - (void)unmountChild:(UIView *)child;
 - (void)handleScrollViewDidScroll:(UIScrollView *)scrollView;
 - (void)handleScrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate;
+- (void)handleScrollViewWillBeginDragging:(UIScrollView *)scrollView;
 - (void)reset;
 /// Given a mounted page root, returns the page's main vertical scroll view
 /// (and makes sure the host is listening to it). RN-specific, so it lives on
@@ -31,6 +32,9 @@
 @property (nonatomic, copy, nullable) void (^onPageSelected)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onCollapsedChange)(BOOL collapsed);
 @property (nonatomic, copy, nullable) void (^onRefresh)(void);
+/// Cancels React's in-flight JS touches (so a Pressable under the finger does
+/// not fire when a scroll/drag starts). RN-specific, provided by the host.
+@property (nonatomic, copy, nullable) void (^cancelReactTouches)(void);
 @end
 
 using namespace facebook::react;
@@ -73,8 +77,37 @@ using namespace facebook::react;
     _content.onRefresh = ^{
       [weakSelf emitRefresh];
     };
+    _content.cancelReactTouches = ^{
+      [weakSelf cancelReactTouches];
+    };
   }
   return self;
+}
+
+#pragma mark - React touch cancellation
+
+/// React Native's `RCTSurfaceTouchHandler` (a gesture recognizer on the
+/// surface view) only cancels JS touches when it happens to negotiate with
+/// the recognizer that took over. The shell's own pans are not always in that
+/// negotiation, so when a scroll or drag starts here we cancel it explicitly
+/// — toggling `enabled` is exactly what RN's `_cancelTouches` does.
+- (void)cancelReactTouches
+{
+  Class handlerClass = NSClassFromString(@"RCTSurfaceTouchHandler");
+  if (handlerClass == nil) {
+    return;
+  }
+  UIView *view = self;
+  while (view != nil) {
+    for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
+      if ([recognizer isKindOfClass:handlerClass]) {
+        recognizer.enabled = NO;
+        recognizer.enabled = YES;
+        return;
+      }
+    }
+    view = view.superview;
+  }
 }
 
 #pragma mark - Scroll view discovery + listening
@@ -114,6 +147,11 @@ using namespace facebook::react;
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
 {
   [_content handleScrollViewDidEndDragging:scrollView willDecelerate:decelerate];
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+  [_content handleScrollViewWillBeginDragging:scrollView];
 }
 
 #pragma mark - RN children

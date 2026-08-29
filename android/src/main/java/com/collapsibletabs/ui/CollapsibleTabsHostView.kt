@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.viewpager2.widget.ViewPager2
 import com.facebook.react.R
+import com.facebook.react.uimanager.events.NativeGestureUtil
 import com.facebook.react.views.scroll.ReactScrollView
 import com.facebook.react.views.scroll.ReactScrollViewHelper
 import com.facebook.react.views.scroll.ScrollEventType
@@ -97,6 +98,30 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var reconcileAnimator: ValueAnimator? = null
     /** True from the user's drag start until the pager settles. */
     private var userDragging = false
+
+    /** Latest touch seen by the shell — `notifyNativeGestureStarted` needs an
+     *  event, and a pager drag begins inside ViewPager2 where we have none. */
+    private var lastTouch: MotionEvent? = null
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        lastTouch?.recycle()
+        lastTouch = MotionEvent.obtain(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * React's JS touch dispatcher only cancels an in-flight press when a
+     * native view reports that it started a gesture. Do that whenever the
+     * shell (pager or band forwarding) takes over the touch stream.
+     */
+    fun notifyReactNativeGestureStarted(ev: MotionEvent? = lastTouch) {
+        val event = ev ?: return
+        try {
+            NativeGestureUtil.notifyNativeGestureStarted(this, event)
+        } catch (_: Throwable) {
+            // Not under a React root (e.g. detached) — nothing to cancel.
+        }
+    }
 
     /** Re-pin the pager to JS's selection after anything that could have
      *  moved it without a user gesture (layout re-anchoring). */
@@ -315,7 +340,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         }
 
         override fun onPageScrollStateChanged(state: Int) {
-            if (state == ViewPager2.SCROLL_STATE_DRAGGING) userDragging = true
+            if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
+                userDragging = true
+                // ViewPager2 took the touch stream: tell React so the JS
+                // responder (a Pressable under the finger) is cancelled —
+                // RN's own ScrollView does this, ViewPager2 cannot.
+                notifyReactNativeGestureStarted()
+            }
             if (state == ViewPager2.SCROLL_STATE_IDLE) {
                 userDragging = false
                 pinPagerToSelection()
@@ -634,7 +665,11 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         private fun isOnBand(y: Float): Boolean =
             y < headerHeightPx + tabBarHeightPx - headerOffset
 
-        /** Where forwarded events go: the active page's scroll view. */
+        private fun isOnHeader(y: Float): Boolean = y < headerHeightPx - headerOffset
+
+        /** Where forwarded events go: the active page's scroll view, or null
+         *  to swallow the gesture (horizontal drag on the header: inert by
+         *  design, but it must still cancel the press under the finger). */
         private var forwardTarget: View? = null
         private val tmpLoc = IntArray(2)
         private val tmpLoc2 = IntArray(2)
@@ -665,19 +700,24 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                     val dx = ev.x - downX
                     val dy = ev.y - downY
                     val vertical = kotlin.math.abs(dy) > touchSlop && kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.5f
+                    val horizontal = kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f
                     val target: View? = if (vertical) activeScrollView() else null
-                    if (target != null) {
+                    val swallow = horizontal && isOnHeader(downY)
+                    if (target != null || swallow) {
                         // Claim the gesture (band children get ACTION_CANCEL)
                         // and open it on the target with a synthetic DOWN at
                         // the original touch point so its own slop logic runs.
                         forwarding = true
                         forwardTarget = target
                         parent?.requestDisallowInterceptTouchEvent(true)
-                        val down = MotionEvent.obtain(ev)
-                        down.setLocation(downX, downY)
-                        forward(down, MotionEvent.ACTION_DOWN)
-                        down.recycle()
-                        forward(ev)
+                        notifyReactNativeGestureStarted(ev)
+                        if (target != null) {
+                            val down = MotionEvent.obtain(ev)
+                            down.setLocation(downX, downY)
+                            forward(down, MotionEvent.ACTION_DOWN)
+                            down.recycle()
+                            forward(ev)
+                        }
                         return true
                     }
                 }
