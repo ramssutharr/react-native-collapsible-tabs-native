@@ -1,0 +1,87 @@
+buildscript {
+  ext.getExtOrDefault = { name, fallback ->
+    rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+  }
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:8.7.2"
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${getExtOrDefault('kotlinVersion', '2.1.20')}"
+  }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+// Codegen: generates NativeCollapsibleTabsManagerInterface / -Delegate from
+// the JS spec into com.facebook.react.viewmanagers (see package.json).
+apply plugin: "com.facebook.react"
+
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
+android {
+  namespace "com.collapsibletabs"
+  compileSdkVersion getExtOrDefault("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdkVersion getExtOrDefault("minSdkVersion", 24)
+    targetSdkVersion getExtOrDefault("targetSdkVersion", 35)
+    buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
+  }
+
+  buildFeatures {
+    buildConfig true
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+
+  lintOptions {
+    disable "GradleCompatible"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs += ["src/main/java"]
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+
+  // The shell's list surfaces. Declared explicitly rather than relying on
+  // whatever other modules pull in transitively.
+  implementation "androidx.recyclerview:recyclerview:1.4.0"
+  implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+  implementation "androidx.viewpager2:viewpager2:1.1.0"
+}
+
+react {
+  // Library codegen: reads codegenConfig from package.json.
+  jsRootDir = file("../src/")
+  libraryName = "RNCollapsibleTabsSpec"
+  codegenJavaPackageName = "com.facebook.react.viewmanagers"
+}

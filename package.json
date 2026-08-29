@@ -1,0 +1,73 @@
+{
+  "name": "react-native-collapsible-tabs-native",
+  "version": "0.1.0",
+  "description": "Instagram/Twitter-style collapsing header + tab pager for React Native, with the collapse owned by the platform (UIKit / Android) so header and list can never drift apart.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "react-native": "./src/index.ts",
+  "source": "./src/index.ts",
+  "files": [
+    "src",
+    "android",
+    "ios",
+    "*.podspec",
+    "README.md",
+    "LICENSE",
+    "!android/build",
+    "!ios/build",
+    "!**/__tests__",
+    "!**/.*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "android",
+    "collapsible",
+    "tabs",
+    "tab-view",
+    "collapsing-header",
+    "sticky-header",
+    "fabric",
+    "new-architecture"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramssutharr/react-native-collapsible-tabs-native.git"
+  },
+  "author": "Ram Suthar",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ramssutharr/react-native-collapsible-tabs-native/issues"
+  },
+  "homepage": "https://github.com/ramssutharr/react-native-collapsible-tabs-native#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.76.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "19.1.0",
+    "react-native": "0.83.0",
+    "typescript": "^5.6.0"
+  },
+  "codegenConfig": {
+    "name": "RNCollapsibleTabsSpec",
+    "type": "components",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.facebook.react.viewmanagers"
+    },
+    "ios": {
+      "componentProvider": {
+        "NativeCollapsibleTabs": "NativeCollapsibleTabs"
+      }
+    }
+  }
+}
