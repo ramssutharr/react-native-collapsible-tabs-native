@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased
+
+- Fix (Android): pressing a tab while the header was collapsed sprang the
+  header back open; swiping to the same tab did not. ViewPager2 dispatches
+  `onPageSelected` at the *start* of a programmatic scroll, so the incoming
+  page became active before anything had aligned it, and the header was then
+  reconciled against a page still at its own scroll position. The incoming
+  page is now aligned to the current header offset before it becomes active,
+  so a pressed tab opens exactly as collapsed as the one you left.
+- Fix (Android): `allowFullCollapse` gave a page its extra range as bottom
+  padding on the ScrollView, which `getMaxScrollY()` honours — but not the
+  check that decides whether a drag may *start*. `ScrollView.onInterceptTouchEvent`
+  bails on `scrollY == 0 && !canScrollVertically(1)`, and that measures the
+  content child's bottom against the viewport, where bottom padding does not
+  count. A short tab was therefore untouchable until something scrolled it
+  programmatically, and locked again the moment it returned to the top. The
+  range is now added to the content view's height instead, which every path
+  agrees on. (Fabric also re-applies a view's own padding on layout, so the
+  padding was being wiped from under us as well.)
+- Fix (iOS): with `allowFullCollapse`, dragging the blank area below a short
+  tab's items did nothing. `RCTScrollViewComponentView` hit-tests only the
+  subviews of its content container and returns its own wrapper for anything
+  else — and that wrapper is the scroll view's parent, so such a touch never
+  reaches the scroll view's pan recogniser. (Normally invisible: a list that
+  short has nothing to scroll.) Those touches are now handed to the scroll
+  view itself.
+- Fix: a page's scroll being clamped by a layout pass is no longer mistaken
+  for the user scrolling. When a tab's content mounts, Fabric re-lays it out
+  at its natural height and `ReactScrollView.onLayout` re-issues a `scrollTo`
+  that clamps against it — the header followed that to 0 and sprang open on
+  the first visit to a tab. A scroll the page could not currently hold is now
+  treated as a clamp: the page is re-extended and the offset restored.
+- Fix: `allowFullCollapse` under-provisioned every page whose content was
+  shorter than the viewport. The page's natural scroll range was clamped at
+  zero before the shortfall was subtracted, so a page needing
+  `headerHeight + |shortfall|` got only `headerHeight`. A tab that nearly
+  filled the screen stopped just short of a full collapse, and a tab with one
+  or two rows could not scroll at all — while a fully empty tab happened to
+  work, because a fixed-height empty state puts its range near zero, where the
+  old arithmetic was accidentally correct.
+- Fix: with `allowFullCollapse`, a page was aligned to the header offset
+  *before* it had been given its extra scroll range, so the alignment clamped
+  to whatever range the page happened to have. A short tab then kept the last
+  slice of the header on screen, and the give-up eased the header open a beat
+  later. Pages now get their range before anything scrolls them.
+- Fix: with `allowFullCollapse`, switching to a tab that had never been opened
+  sprang the header open — the page was still mounting when the 400ms give-up
+  fired, and an unmounted page reads as "too short to hold the offset". A page
+  that has not caught up is now treated as still mounting: Android holds the
+  header and aligns the page as soon as its content lands, and iOS retries the
+  alignment before conceding.
+- Fix (iOS): switching tabs briefly showed the incoming page's content one
+  header too low before it snapped into place — a visible flicker, on swipe
+  most of all, because a lazy page mounts while it is already sliding into
+  view and paints before anything can align it. A page that still owes a sync
+  is by definition not where the header says it is, so it stays hidden from
+  the moment the sync is owed until it lands (or is conceded). Such a page is
+  lazy-mounted and blank at that point anyway, so nothing is lost.
+- Fix (iOS): switching to a tab whose list had not mounted left the header
+  collapsed over a page still at its top — a gap the height of the header
+  under the tab bar, with the page scrolling independently of it. A sync left
+  pending for a page with no scroll view scheduled no retry at all (the
+  contentSize observer that would have retried is only registered once the
+  scroll view resolves), so nothing ever completed it. Such a sync is now
+  always armed.
+
 ## 0.3.0 — 2026-08-31
 
 - New: `allowFullCollapse?: boolean` (default `false`). Tabs whose content is

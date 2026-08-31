@@ -84,6 +84,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var collapseSlack: [Int: CGFloat] = [:]
   private var contentSizeObservers: [Int: NSKeyValueObservation] = [:]
   private var giveUpWork: DispatchWorkItem?
+  /// Give-up retries spent waiting for a page that is still mounting.
+  private var syncRetries = 0
 
   // Pull-to-refresh
   /** False when the screen provides no onRefresh — the pull gesture must not
@@ -100,6 +102,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private static let refreshThreshold: CGFloat = 70
   private static let refreshBand: CGFloat = 60
   private static let syncGiveUp: TimeInterval = 0.4
+  private static let maxSyncRetries = 5
 
   // MARK: - Init
 
@@ -187,6 +190,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     while pageSlots.count < pageCount {
       let slot = UIView()
       slot.clipsToBounds = true
+      slot.alpha = pendingSync[pageSlots.count] == nil ? 1 : 0
       pager.addSubview(slot)
       pageSlots.append(slot)
       let index = pageSlots.count - 1
@@ -261,7 +265,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       pageChildren[page] = nil
       pageScrollViews[page] = nil
       contentSizeObservers[page] = nil
-      pendingSync[page] = nil
+      setPendingSync(page, nil)
       collapseSlack[page] = nil
     }
     child.removeFromSuperview()
@@ -277,6 +281,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     pageScrollViews.removeAll()
     contentSizeObservers.removeAll()
     pendingSync.removeAll()
+    pageSlots.forEach { $0.alpha = 1 }
     collapseSlack.removeAll()
     fling?.stop()
     fling = nil
@@ -309,6 +314,27 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   // MARK: - Layout
+
+  /// Every touch lands here first. RN re-applies a scroll view's own
+  /// contentInset on prop updates, which silently drops the bottom inset
+  /// `allowFullCollapse` added — re-assert it as the finger arrives, before a
+  /// gesture can be measured against a range that has quietly gone missing.
+  /// (The Android side does the same from `dispatchTouchEvent`.)
+  public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    let hit = super.hitTest(point, with: event)
+    // Only an already-resolved scroll view: hit-testing runs constantly, and
+    // discovery walks the page's view tree.
+    guard allowFullCollapse, let sv = pageScrollViews[activeIndex]?.value else { return hit }
+    applyCollapseSlack(to: sv, page: activeIndex)
+    // RN's scroll view hit-tests ONLY the subviews of its content container
+    // and returns its own wrapper for everything else — and that wrapper is
+    // the scroll view's PARENT, so the touch never reaches the scroll view's
+    // pan recogniser. Dragging the blank area below a short list therefore
+    // does nothing, even though allowFullCollapse gave that page the range to
+    // scroll. Hand such a touch to the scroll view itself.
+    guard let hit, hit !== sv, sv.isDescendant(of: hit) else { return hit }
+    return sv.bounds.contains(sv.convert(point, from: self)) ? sv : hit
+  }
 
   public override func layoutSubviews() {
     super.layoutSubviews()
@@ -359,7 +385,21 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     guard scrollView === activeScrollView() else { return }
-    let y = adjustedY(of: scrollView)
+    var y = adjustedY(of: scrollView)
+    // A scroll the page could not currently hold is a LAYOUT CLAMP, not the
+    // user: when a page's content is re-laid out at its own height the extra
+    // range allowFullCollapse gave it briefly disappears, and the offset is
+    // clamped to what is left. Following that here would spring the header
+    // open the moment a tab's content mounts. Re-apply the page's slack and
+    // put the offset back instead.
+    if allowFullCollapse, y < headerOffset, maxOffset(of: scrollView) < headerOffset {
+      applyCollapseSlack(to: scrollView, page: activeIndex)
+      if maxOffset(of: scrollView) >= headerOffset {
+        let restored = headerOffset - scrollView.contentInset.top + refreshInsetApplied(to: scrollView)
+        scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: restored)
+        y = adjustedY(of: scrollView)
+      }
+    }
     let target: CGFloat
     if directionMode {
       // Follow the scroll DELTA: any up-scroll reveals the header, any
@@ -460,9 +500,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     guard sv.bounds.height > 0 else { return }
-    // The page's own range, with our slack discounted.
+    // The page's own range, with our slack discounted. This is NEGATIVE when
+    // the content is shorter than the viewport, and that shortfall counts:
+    // such a page needs headerHeight + |natural| before its first pixel of
+    // scroll exists. Clamping it to 0 here would leave a page that nearly
+    // fills the screen a little short of a full collapse, and a nearly empty
+    // one unable to scroll at all.
     let natural = sv.contentSize.height + (sv.contentInset.bottom - applied) - sv.bounds.height
-    let needed = max(0, headerHeight - max(0, natural))
+    let needed = max(0, headerHeight - natural)
     guard abs(needed - applied) > 0.5 else { return }
     sv.contentInset.bottom += needed - applied
     if needed == 0 {
@@ -509,9 +554,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private func syncPageToHeader(_ page: Int) {
     guard page >= 0, page < pageCount, page != activeIndex else { return }
     guard let sv = scrollView(for: page) else {
-      pendingSync[page] = headerOffset
+      setPendingSync(page, headerOffset)
       return
     }
+    // Before anything tries to scroll this page: give it the range it needs.
+    // Otherwise the offset below clamps to whatever range the page happens to
+    // have, the sync is left pending, and the give-up concedes the header
+    // open — the collapse would be lost exactly when switching to a short tab.
+    applyCollapseSlack(to: sv, page: page)
     let current = sv.contentOffset.y
     // Direction mode: a page only ever needs to be at least `offset` deep
     // (never scrolled back up to match). Classic: exact match below the
@@ -523,40 +573,110 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       desired = headerOffset >= headerHeight ? max(current, headerHeight) : headerOffset
     }
     if current != desired { sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired) }
-    if sv.contentOffset.y < desired { pendingSync[page] = desired } else { pendingSync[page] = nil }
+    setPendingSync(page, sv.contentOffset.y < desired ? desired : nil)
+  }
+
+  /// A page whose sync is still pending is NOT where the header says it is:
+  /// its content sits at its own scroll position, a header taller than it
+  /// should be. Showing it in that state IS the flicker — the content appears
+  /// low and jumps up on the frame the sync lands. Hide the page while it owes
+  /// a sync so its content is only ever seen in the right place, and reveal it
+  /// the moment the sync completes (or is conceded).
+  private func setPendingSync(_ page: Int, _ value: CGFloat?) {
+    pendingSync[page] = value
+    guard page >= 0, page < pageSlots.count else { return }
+    // Hidden from the moment the sync is owed, INCLUDING before the page's
+    // list exists: on a swipe the page mounts while it is already sliding into
+    // view, so waiting for a scroll view to appear means it has already
+    // painted at the wrong offset — the flicker. A page in that state is
+    // lazy-mounted and therefore blank anyway, so nothing is lost by hiding
+    // it. A page that turns out to have no scroll view at all is revealed
+    // when the sync is conceded.
+    pageSlots[page].alpha = value == nil ? 1 : 0
   }
 
   private func trySync(_ page: Int) {
-    guard let desired = pendingSync[page], let sv = scrollView(for: page) else { return }
+    guard let desired = pendingSync[page] else { return }
+    guard let sv = scrollView(for: page) else {
+      // The page has not mounted its list yet. Nothing else will retry — the
+      // contentSize observer is only registered once the scroll view
+      // resolves — so the retry timer is the only way this sync ever
+      // completes. Without it the header stays collapsed over a page sitting
+      // at its top: a gap the height of the header under the tab bar.
+      if page == activeIndex { scheduleGiveUp() }
+      return
+    }
+    applyCollapseSlack(to: sv, page: page)
     if sv.contentOffset.y < desired {
       sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired)
     }
     if sv.contentOffset.y >= desired {
-      pendingSync[page] = nil
+      setPendingSync(page, nil)
       if page == activeIndex { giveUpWork?.cancel() }
-    } else if page == activeIndex {
+    } else {
+      // Re-assert: the page has a scroll view now, so it has content that is
+      // in the wrong place until this sync lands — keep it hidden.
+      setPendingSync(page, desired)
       // Content may still be growing; give it a beat before conceding.
-      giveUpWork?.cancel()
-      let work = DispatchWorkItem { [weak self] in
-        guard let self else { return }
-        self.pendingSync[self.activeIndex] = nil
-        self.reconcileHeaderToActive()
-      }
-      giveUpWork = work
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.syncGiveUp, execute: work)
+      if page == activeIndex { scheduleGiveUp() }
     }
+  }
+
+  private func scheduleGiveUp() {
+    giveUpWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in self?.runGiveUp() }
+    giveUpWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.syncGiveUp, execute: work)
+  }
+
+  /// The active page still has not reached the header offset. Under
+  /// `allowFullCollapse` it is normally still mounting rather than too short,
+  /// so re-apply its slack and try again for a while. If it never catches up,
+  /// concede anyway: leaving the header collapsed over a page that stayed at
+  /// its top shows as a gap under the tab bar, which is worse than the header
+  /// easing back open.
+  private func runGiveUp() {
+    guard let desired = pendingSync[activeIndex] else {
+      syncRetries = 0
+      return
+    }
+    if allowFullCollapse, let sv = scrollView(for: activeIndex), sv.bounds.height > 0 {
+      applyCollapseSlack(to: sv, page: activeIndex)
+      if sv.contentOffset.y < desired {
+        sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired)
+      }
+      if sv.contentOffset.y >= desired {
+        setPendingSync(activeIndex, nil)
+        syncRetries = 0
+        return
+      }
+    }
+    if allowFullCollapse, syncRetries < Self.maxSyncRetries {
+      syncRetries += 1
+      scheduleGiveUp()
+      return
+    }
+    syncRetries = 0
+    setPendingSync(activeIndex, nil)
+    reconcileHeaderToActive()
   }
 
   /// The page that became active decides the header; a page too short to
   /// hold the offset eases the header to what it can (Twitter behaviour).
   private func reconcileHeaderToActive() {
     guard let sv = activeScrollView() else {
-      if headerOffset > 0 { pendingSync[activeIndex] = headerOffset }
+      if headerOffset > 0 {
+        setPendingSync(activeIndex, headerOffset)
+        scheduleGiveUp()
+      }
       return
     }
     if pendingSync[activeIndex] != nil {
       trySync(activeIndex)
-      if pendingSync[activeIndex] != nil { return }
+      if pendingSync[activeIndex] != nil {
+        scheduleGiveUp()
+        return
+      }
     }
     let y = adjustedY(of: sv)
     lastActiveY = y

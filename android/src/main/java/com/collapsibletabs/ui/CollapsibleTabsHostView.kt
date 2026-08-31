@@ -112,6 +112,14 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         lastTouch?.recycle()
         lastTouch = MotionEvent.obtain(ev)
+        // Fabric re-applies a view's padding on every layout update
+        // (SurfaceMountingManager.updateLayout -> ViewManager.setPadding),
+        // which silently drops the bottom padding allowFullCollapse adds to a
+        // page. Re-assert it as the finger lands, before any scroll can be
+        // clamped against a range that has quietly gone missing.
+        if (allowFullCollapse && ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            activeScrollView()?.let { applyCollapseSlack(it) }
+        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -137,6 +145,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             pager.setCurrentItem(selectedIndex, false)
         }
         if (activeIndex != selectedIndex && pager.currentItem == selectedIndex) {
+            // Same ordering rule as onPageSelected: align the incoming page
+            // before it becomes the active one.
+            syncPageToHeader(selectedIndex)
             activeIndex = selectedIndex
             reconcileHeaderToActive()
         }
@@ -159,6 +170,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     /** Extra bottom padding this shell added per scroll view for
      *  [allowFullCollapse] — tracked so the view's own padding is restored. */
     private val collapseSlack = WeakHashMap<ReactScrollView, Int>()
+    /** Height Fabric last laid a page's content view out at. */
+    private val naturalContentHeight = WeakHashMap<View, Int>()
+    /** True while this view is re-laying a content view out itself. */
+    private var applyingSlack = false
 
     // MARK: - Props
 
@@ -413,6 +428,15 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             // re-layout can re-anchor on a focused page and "select" it, and
             // echoing that to JS would make the tab jump for real.
             if (!userDragging && position != selectedIndex) return
+            // A tab PRESS arrives here before the incoming page has been
+            // aligned: ViewPager2 dispatches the selection at the START of a
+            // programmatic scroll, so onPageScrolled has not run for it yet.
+            // Align it now — while `activeIndex` is still the outgoing page,
+            // because syncPageToHeader ignores the active one — or the
+            // reconcile below would read a page still sitting at its own
+            // scroll position and ease the header open. A swipe is already
+            // aligned by onPageScrolled, which makes this a no-op.
+            syncPageToHeader(position)
             activeIndex = position
             selectedIndex = position
             reconcileHeaderToActive()
@@ -458,6 +482,23 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private val scrollChangeListener =
         View.OnScrollChangeListener { v, _, scrollY, _, _ ->
             if (v !== activeScrollView()) return@OnScrollChangeListener
+            // A scroll the page could not currently hold is a LAYOUT CLAMP,
+            // not the user: Fabric re-lays the content view out at its own
+            // height (dropping the extension allowFullCollapse gave it) and
+            // ReactScrollView.onLayout re-issues scrollTo, which clamps
+            // against that shorter content. Following it here would spring the
+            // header open the moment a tab's content mounts. Re-extend the
+            // page and put the scroll back instead.
+            val active = v as? ReactScrollView
+            if (allowFullCollapse && active != null && scrollY < headerOffset &&
+                contentRoom(active) < headerOffset
+            ) {
+                applyCollapseSlack(active)
+                if (contentRoom(active) >= headerOffset) {
+                    active.scrollTo(0, headerOffset)
+                    return@OnScrollChangeListener
+                }
+            }
             val target = if (directionMode) {
                 // Follow the scroll DELTA: any up-scroll reveals the header,
                 // any down-scroll hides it; pinned open at the very top.
@@ -525,12 +566,18 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         }
         val content = sv.getChildAt(0)
         if (content != null && contentObserved.add(content)) {
-            content.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            content.addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+                // Record what Fabric laid out, so the extension is always
+                // measured from the content's own height instead of compounding.
+                if (!applyingSlack) naturalContentHeight[v] = bottom - top
                 // Content grew or shrank: so did the slack it needs.
                 applyCollapseSlack(sv)
                 val p = pageIndexOf(sv) ?: return@addOnLayoutChangeListener
                 if (pendingSync.indexOfKey(p) >= 0) trySync(p)
             }
+        }
+        content?.let { c ->
+            if (!naturalContentHeight.containsKey(c)) naturalContentHeight[c] = c.height
         }
         applyCollapseSlack(sv)
         // Deliberately no trySync here: trySync → scrollViewOf → observe
@@ -551,28 +598,31 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
      * get 0, and nothing moves until the user scrolls.
      */
     private fun applyCollapseSlack(sv: ReactScrollView) {
-        val applied = collapseSlack[sv] ?: 0
-        if (!allowFullCollapse) {
-            if (applied != 0) {
-                sv.setPadding(sv.paddingLeft, sv.paddingTop, sv.paddingRight, sv.paddingBottom - applied)
-                sv.clipToPadding = true
-                collapseSlack.remove(sv)
-            }
-            return
-        }
         val content = sv.getChildAt(0) ?: return
-        if (sv.height <= 0 || content.height <= 0) return
-        // The page's own padding and range, with our slack discounted.
-        // Clamped: RN re-applying the view's own padding would leave our
-        // bookkeeping ahead of the real value.
-        val basePaddingBottom = maxOf(0, sv.paddingBottom - applied)
-        val natural = content.height - (sv.height - sv.paddingTop - basePaddingBottom)
-        val needed = (headerHeightPx - maxOf(0, natural)).coerceAtLeast(0)
-        if (needed == applied) return
-        sv.clipToPadding = needed == 0
-        sv.setPadding(sv.paddingLeft, sv.paddingTop, sv.paddingRight, basePaddingBottom + needed)
+        if (sv.height <= 0) return
+        val applied = collapseSlack[sv] ?: 0
+        // The content's own height, i.e. without the extension we gave it.
+        // Fabric is the only thing that lays this view out (ReactScrollView
+        // does not call super.onLayout), so the layout listener records the
+        // height Fabric last set and every extension is measured from that.
+        val natural = naturalContentHeight[content] ?: (content.height - applied)
+        val room = natural - sv.height
+        val needed = if (allowFullCollapse) (headerHeightPx - room).coerceAtLeast(0) else 0
+        if (needed == applied && content.height == natural + needed) return
+        // Extend the CONTENT, not the ScrollView's padding: ScrollView refuses
+        // to even begin a drag while `scrollY == 0 && !canScrollVertically(1)`,
+        // and that check measures the child's bottom against the viewport —
+        // bottom padding never moves the child's bottom, so a padded but short
+        // page stays untouchable until something scrolls it programmatically.
+        applyingSlack = true
+        content.layout(content.left, content.top, content.right, content.top + natural + needed)
+        applyingSlack = false
         if (needed == 0) collapseSlack.remove(sv) else collapseSlack[sv] = needed
     }
+
+    /** How far this page can scroll right now. */
+    private fun contentRoom(sv: ReactScrollView): Int =
+        (sv.getChildAt(0)?.height ?: 0) - sv.height
 
     private fun applyCollapseSlackToAll() {
         pageScrollViews.forEach { _, sv -> applyCollapseSlack(sv) }
@@ -582,20 +632,36 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         val desired = pendingSync.get(page, -1)
         if (desired < 0) return
         val sv = scrollViewOf(page) ?: return
+        applyCollapseSlack(sv)
         if (sv.scrollY < desired) sv.scrollTo(0, desired)
         if (sv.scrollY >= desired) {
             pendingSync.delete(page)
             if (page == activeIndex) removeCallbacks(giveUpSync)
-        } else if (page == activeIndex) {
+        } else if (page == activeIndex && !allowFullCollapse) {
             // Content may still be growing; give it a beat before conceding.
+            // Never under allowFullCollapse: that page is guaranteed the range
+            // it needs, so it WILL hold the offset once it has mounted, and
+            // the content-layout listener retries until it does. Conceding on
+            // a timer would spring the header open on a tab opened for the
+            // first time, which is exactly the collapse the user wants kept.
             removeCallbacks(giveUpSync)
             postDelayed(giveUpSync, SYNC_GIVE_UP_MS)
         }
     }
 
+    /**
+     * The active page still hasn't reached the header offset. Without
+     * [allowFullCollapse] that means it is genuinely too short, so ease the
+     * header to what it can hold (Twitter's behaviour). WITH it, every page is
+     * guaranteed the range it needs, so a page that hasn't caught up is still
+     * mounting — re-apply its slack and try again instead of conceding the
+     * collapse the user already had.
+     */
+    // Explicit type: the body re-posts the runnable itself, which type
+    // inference cannot resolve.
     /** The active page can't hold the header offset: ease the header to
      *  where it can (Twitter's behaviour for a short tab). */
-    private val giveUpSync = Runnable {
+    private val giveUpSync: Runnable = Runnable {
         pendingSync.delete(activeIndex)
         reconcileHeaderToActive()
     }
@@ -687,6 +753,12 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             pendingSync.put(page, headerOffset)
             return
         }
+        // Before anything tries to scroll this page: give it the range it
+        // needs. Otherwise the scrollTo below clamps to whatever range the
+        // page happens to have, the sync stays pending, and the give-up
+        // concedes the header open — losing the collapse exactly when
+        // switching to a short tab.
+        applyCollapseSlack(sv)
         // Direction mode: the header may sit anywhere relative to the page's
         // own scroll, so a page only ever needs to be at least `offset` deep
         // (never scrolled back up to match). Classic: exact match below the
