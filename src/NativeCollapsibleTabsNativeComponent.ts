@@ -38,6 +38,10 @@ type CollapsedChangeEvent = Readonly<{
   collapsed: boolean;
 }>;
 
+type PageRevealedEvent = Readonly<{
+  index: Int32;
+}>;
+
 type RefreshEvent = Readonly<{}>;
 
 export interface NativeProps extends ViewProps {
@@ -80,6 +84,13 @@ export interface NativeProps extends ViewProps {
   refreshEnabled?: WithDefault<boolean, true>;
 
   onPageSelected?: DirectEventHandler<PageSelectedEvent>;
+  /**
+   * A page became visible for the first time — fired as soon as ANY part of
+   * it peeks in during a swipe, long before the swipe settles, so a lazy page
+   * can mount while it is still sliding into view instead of after. Emitted
+   * once per page (native dedupes), so this costs no per-frame JS work.
+   */
+  onPageRevealed?: DirectEventHandler<PageRevealedEvent>;
   onCollapsedChange?: DirectEventHandler<CollapsedChangeEvent>;
   onRefresh?: DirectEventHandler<RefreshEvent>;
 }

@@ -33,6 +33,7 @@
 /// the ObjC++ side.
 @property (nonatomic, copy, nullable) UIScrollView *_Nullable (^scrollViewResolver)(UIView *pageRoot);
 @property (nonatomic, copy, nullable) void (^onPageSelected)(NSInteger index);
+@property (nonatomic, copy, nullable) void (^onPageRevealed)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onCollapsedChange)(BOOL collapsed);
 @property (nonatomic, copy, nullable) void (^onRefresh)(void);
 /// Cancels React's in-flight JS touches (so a Pressable under the finger does
@@ -73,6 +74,9 @@ using namespace facebook::react;
     };
     _content.onPageSelected = ^(NSInteger index) {
       [weakSelf emitPageSelected:index];
+    };
+    _content.onPageRevealed = ^(NSInteger index) {
+      [weakSelf emitPageRevealed:index];
     };
     _content.onCollapsedChange = ^(BOOL collapsed) {
       [weakSelf emitCollapsedChange:collapsed];
@@ -182,6 +186,15 @@ using namespace facebook::react;
   }
   auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
   emitter->onPageSelected({.index = static_cast<int>(index)});
+}
+
+- (void)emitPageRevealed:(NSInteger)index
+{
+  if (_eventEmitter == nullptr) {
+    return;
+  }
+  auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
+  emitter->onPageRevealed({.index = static_cast<int>(index)});
 }
 
 - (void)emitCollapsedChange:(BOOL)collapsed

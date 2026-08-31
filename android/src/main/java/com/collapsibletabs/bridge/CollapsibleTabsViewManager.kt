@@ -40,6 +40,9 @@ class CollapsibleTabsViewManager(
         view.onPageSelected = { index ->
             dispatcher()?.dispatchEvent(TabsPageSelectedEvent(surfaceId(), view.id, index))
         }
+        view.onPageRevealed = { index ->
+            dispatcher()?.dispatchEvent(TabsPageRevealedEvent(surfaceId(), view.id, index))
+        }
         view.onCollapsedChange = { collapsed ->
             dispatcher()?.dispatchEvent(
                 TabsCollapsedChangeEvent(surfaceId(), view.id, collapsed),
@@ -58,6 +61,7 @@ class CollapsibleTabsViewManager(
     override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
         mutableMapOf(
             TabsPageSelectedEvent.NAME to mapOf("registrationName" to "onPageSelected"),
+            TabsPageRevealedEvent.NAME to mapOf("registrationName" to "onPageRevealed"),
             TabsCollapsedChangeEvent.NAME to mapOf("registrationName" to "onCollapsedChange"),
             TabsRefreshEvent.NAME to mapOf("registrationName" to "onRefresh"),
         )

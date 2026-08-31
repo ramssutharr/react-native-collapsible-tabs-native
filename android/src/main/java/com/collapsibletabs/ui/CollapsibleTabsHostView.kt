@@ -53,6 +53,8 @@ import java.util.WeakHashMap
 class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     var onPageSelected: ((index: Int) -> Unit)? = null
+    /** A page showed any part of itself for the first time (see [revealPage]). */
+    var onPageRevealed: ((index: Int) -> Unit)? = null
     var onCollapsedChange: ((collapsed: Boolean) -> Unit)? = null
     var onRefresh: (() -> Unit)? = null
 
@@ -101,6 +103,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var collapsed = false
     private var activeIndex = 0
     private var lastEmittedIndex = -1
+    /** Pages already announced to JS as visible — emitted ONCE per page. */
+    private val revealedPages = HashSet<Int>()
     private var reconcileAnimator: ValueAnimator? = null
     /** True from the user's drag start until the pager settles. */
     private var userDragging = false
@@ -269,6 +273,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     fun onPropsApplied() {
         if (pendingPageCount >= 0 && pendingPageCount != pageCount) {
             pageCount = pendingPageCount
+            // Routes changed: an index no longer means the same page.
+            revealedPages.retainAll { it < pageCount }
             pager.offscreenPageLimit = maxOf(1, pageCount)
             adapter.notifyDataSetChanged()
         }
@@ -385,6 +391,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             pageSlots.forEach { key, value -> if (value === slot && key != position) stale = key }
             if (stale >= 0) pageSlots.remove(stale)
             pageSlots.put(position, slot)
+            // A recycled slot carries the previous page's alpha.
+            slot.alpha = if (pendingSync.indexOfKey(position) >= 0) 0f else 1f
             val child = pageChildren.get(position)
             if (child != null) slot.attach(child) else slot.detach()
         }
@@ -394,6 +402,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             var pos = -1
             pageSlots.forEach { key, value -> if (value === slot) pos = key }
             if (pos >= 0) pageSlots.remove(pos)
+            slot.alpha = 1f
             slot.detach()
         }
     }
@@ -407,6 +416,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             // neighbour whose content sits at the wrong height.
             syncPageToHeader(position)
             if (positionOffset > 0f) syncPageToHeader(position + 1)
+            // Mount-on-peek: announce a page the instant any sliver of it is
+            // on screen, so a lazy page mounts (and is aligned to the header)
+            // while it is still sliding in rather than after the swipe
+            // settles — which is what made a freshly opened tab paint at the
+            // wrong offset first.
+            revealPage(position)
+            if (positionOffsetPixels > 0) revealPage(position + 1)
         }
 
         override fun onPageScrollStateChanged(state: Int) {
@@ -573,7 +589,20 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                 // Content grew or shrank: so did the slack it needs.
                 applyCollapseSlack(sv)
                 val p = pageIndexOf(sv) ?: return@addOnLayoutChangeListener
-                if (pendingSync.indexOfKey(p) >= 0) trySync(p)
+                if (pendingSync.indexOfKey(p) >= 0) {
+                    trySync(p)
+                } else if (headerOffset > 0 && sv.scrollY < headerOffset &&
+                    contentRoom(sv) >= headerOffset
+                ) {
+                    // The page was in sync, and this layout knocked it out:
+                    // Fabric re-lays the content out at its own height and
+                    // ReactScrollView.onLayout re-issues a scrollTo that clamps
+                    // against it. Correct it HERE, inside the same layout pass,
+                    // so the frame is never drawn with the content a header too
+                    // low — waiting for the scroll callback is one frame late,
+                    // which is the flicker.
+                    sv.scrollTo(0, headerOffset)
+                }
             }
         }
         content?.let { c ->
@@ -628,6 +657,33 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         pageScrollViews.forEach { _, sv -> applyCollapseSlack(sv) }
     }
 
+    /**
+     * A page that still owes a sync is NOT where the header says it is: its
+     * content sits at its own scroll position, a header taller than it should
+     * be. Showing it in that state is the flicker — with mount-on-peek the
+     * page mounts while it is already sliding into view, so it would paint
+     * low and jump up a frame later. Hide it while the sync is owed and
+     * reveal it the moment it lands (or is conceded); a page in that state is
+     * lazy-mounted and blank anyway, so nothing is lost.
+     */
+    private fun setPendingSync(page: Int, value: Int?) {
+        if (value == null) pendingSync.delete(page) else pendingSync.put(page, value)
+        pageSlots.get(page)?.alpha = if (value == null) 1f else 0f
+        if (value != null) {
+            // Safety valve: a page whose sync never completes — a tab with no
+            // scroll view at all, say — must not stay invisible. Under
+            // allowFullCollapse nothing concedes on a timer, so this is the
+            // only thing that would ever reveal it. Showing it slightly out of
+            // sync is bad; never showing it is worse.
+            removeCallbacks(revealStuckPage)
+            postDelayed(revealStuckPage, REVEAL_STUCK_MS)
+        }
+    }
+
+    private val revealStuckPage: Runnable = Runnable {
+        pageSlots.forEach { _, slot -> slot.alpha = 1f }
+    }
+
     private fun trySync(page: Int) {
         val desired = pendingSync.get(page, -1)
         if (desired < 0) return
@@ -635,7 +691,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         applyCollapseSlack(sv)
         if (sv.scrollY < desired) sv.scrollTo(0, desired)
         if (sv.scrollY >= desired) {
-            pendingSync.delete(page)
+            setPendingSync(page, null)
             if (page == activeIndex) removeCallbacks(giveUpSync)
         } else if (page == activeIndex && !allowFullCollapse) {
             // Content may still be growing; give it a beat before conceding.
@@ -662,8 +718,14 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     /** The active page can't hold the header offset: ease the header to
      *  where it can (Twitter's behaviour for a short tab). */
     private val giveUpSync: Runnable = Runnable {
-        pendingSync.delete(activeIndex)
+        setPendingSync(activeIndex, null)
         reconcileHeaderToActive()
+    }
+
+    /** Emitted once per page: JS only needs to learn that a page should mount. */
+    private fun revealPage(page: Int) {
+        if (page < 0 || page >= pageCount || !revealedPages.add(page)) return
+        onPageRevealed?.invoke(page)
     }
 
     private fun pageIndexOf(view: View): Int? {
@@ -750,7 +812,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         if (sv == null) {
             // No scroll view yet (page content mounts on first visit): apply
             // once it appears.
-            pendingSync.put(page, headerOffset)
+            setPendingSync(page, headerOffset)
             return
         }
         // Before anything tries to scroll this page: give it the range it
@@ -769,7 +831,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             else -> headerOffset
         }
         if (sv.scrollY != desired) sv.scrollTo(0, desired)
-        if (sv.scrollY < desired) pendingSync.put(page, desired) else pendingSync.delete(page)
+        setPendingSync(page, if (sv.scrollY < desired) desired else null)
     }
 
     /**
@@ -783,7 +845,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         if (sv == null) {
             // Content not mounted yet: hold the header and catch the page up
             // when it arrives instead of snapping the header open.
-            if (headerOffset > 0) pendingSync.put(activeIndex, headerOffset)
+            if (headerOffset > 0) setPendingSync(activeIndex, headerOffset)
             return
         }
         if (pendingSync.indexOfKey(activeIndex) >= 0) {
@@ -1072,5 +1134,6 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         const val ID_PAGE_PREFIX = "tabs-page-"
         private const val MAX_DISCOVERY_VISITS = 4000
         private const val SYNC_GIVE_UP_MS = 400L
+        private const val REVEAL_STUCK_MS = 1200L
     }
 }

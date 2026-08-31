@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- New: pages mount **on peek**. Native announces a page the instant any sliver
+  of it is on screen (`onPageRevealed`, emitted once per page, so no per-frame
+  JS), and the shell mounts it then — so a lazy tab mounts and is aligned to
+  the header while it is still sliding in, instead of after the swipe settles.
+  Previously a freshly opened tab painted at its own scroll position first and
+  jumped into place a frame later.
+- Fix: a page knocked out of sync by a layout pass is now corrected inside
+  that same pass. When a tab's content re-lays out, Fabric resets the content
+  view's height and `ReactScrollView.onLayout` re-issues a `scrollTo` that
+  clamps against it; reacting to the resulting scroll event is one frame late,
+  and one frame late is a flicker.
+- Fix: a page that still owes a sync is hidden until it lands (Android as well
+  as iOS). Such a page is not where the header says it is, and with
+  mount-on-peek it mounts while already sliding into view, so it would
+  otherwise paint a header too low before snapping into place. A page in that
+  state is lazy-mounted and blank anyway. A stuck sync reveals the page
+  regardless after a short fallback, so a tab can never stay invisible.
 - Fix (Android): pressing a tab while the header was collapsed sprang the
   header back open; swiping to the same tab did not. ViewPager2 dispatches
   `onPageSelected` at the *start* of a programmatic scroll, so the incoming

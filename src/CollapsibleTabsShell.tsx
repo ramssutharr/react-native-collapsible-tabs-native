@@ -94,6 +94,25 @@ export function CollapsibleTabsShell({
     });
   }, [index]);
 
+  /**
+   * Mount-on-peek: native tells us the moment any sliver of a page is on
+   * screen, so a lazy page mounts while it is still sliding in — and is
+   * aligned to the header before it is meaningfully visible — instead of
+   * mounting only once the swipe settles. Native emits this once per page,
+   * so this costs no per-frame JS work.
+   */
+  const handlePageRevealed = useCallback((e: { nativeEvent: { index: number } }) => {
+    const revealed = e.nativeEvent.index;
+    setVisited((prev) => {
+      if (prev.has(revealed)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(revealed);
+      return next;
+    });
+  }, []);
+
   const handlePageSelected = useCallback(
     (e: { nativeEvent: { index: number } }) => {
       onIndexChange(e.nativeEvent.index);
@@ -136,6 +155,7 @@ export function CollapsibleTabsShell({
         refreshing={refreshing}
         refreshEnabled={onRefresh != null}
         onPageSelected={handlePageSelected}
+        onPageRevealed={handlePageRevealed}
         onCollapsedChange={handleCollapsedChange}
         onRefresh={handleRefresh}
       >

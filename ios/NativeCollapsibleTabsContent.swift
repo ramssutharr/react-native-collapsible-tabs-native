@@ -29,6 +29,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public var scrollViewResolver: ((UIView) -> UIScrollView?)?
   @objc public var onPageSelected: ((Int) -> Void)?
+  /// A page showed any part of itself for the first time (see `revealPage`).
+  @objc public var onPageRevealed: ((Int) -> Void)?
   @objc public var onCollapsedChange: ((Bool) -> Void)?
   @objc public var onRefresh: (() -> Void)?
   /// Provided by the host: cancels React's in-flight JS touches so a press
@@ -72,6 +74,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var collapsed = false
   private var activeIndex = 0
   private var lastEmittedIndex = -1
+  /// Pages already announced to JS as visible — the reveal is emitted ONCE
+  /// per page, never per frame.
+  private var revealedPages: Set<Int> = []
   /// True between the user's horizontal drag start and the pager settling.
   private var userDragging = false
 
@@ -187,6 +192,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public func setPageCount(_ count: Int) {
     guard count != pageCount else { return }
     pageCount = max(0, count)
+    revealedPages = revealedPages.filter { $0 < pageCount }
     while pageSlots.count < pageCount {
       let slot = UIView()
       slot.clipsToBounds = true
@@ -281,6 +287,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     pageScrollViews.removeAll()
     contentSizeObservers.removeAll()
     pendingSync.removeAll()
+    revealedPages.removeAll()
     pageSlots.forEach { $0.alpha = 1 }
     collapseSlack.removeAll()
     fling?.stop()
@@ -708,8 +715,22 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     let w = bounds.width
     guard w > 0 else { return }
     let position = Int(floor(pager.contentOffset.x / w))
+    let peeking = pager.contentOffset.x - CGFloat(position) * w > 0
     syncPageToHeader(position)
-    if pager.contentOffset.x - CGFloat(position) * w > 0 { syncPageToHeader(position + 1) }
+    if peeking { syncPageToHeader(position + 1) }
+    // Mount-on-peek: announce a page the instant any sliver of it is on
+    // screen, so a lazy page mounts (and is aligned to the header) while it
+    // is still sliding in, rather than after the swipe settles — which is
+    // what made a freshly opened tab paint at the wrong offset first.
+    revealPage(position)
+    if peeking { revealPage(position + 1) }
+  }
+
+  /// Emitted once per page: JS only needs to learn that a page should mount.
+  private func revealPage(_ page: Int) {
+    guard page >= 0, page < pageCount, !revealedPages.contains(page) else { return }
+    revealedPages.insert(page)
+    onPageRevealed?(page)
   }
 
   private func activate(_ index: Int) {

@@ -18,6 +18,24 @@ class TabsPageSelectedEvent(
     companion object { const val NAME = "topPageSelected" }
 }
 
+/**
+ * A page showed any part of itself for the first time. Emitted ONCE per page,
+ * as soon as it peeks in during a swipe, so a lazy page can mount while it is
+ * still sliding into view rather than after the swipe settles.
+ */
+class TabsPageRevealedEvent(
+    surfaceId: Int,
+    viewTag: Int,
+    private val index: Int,
+) : Event<TabsPageRevealedEvent>(surfaceId, viewTag) {
+    override fun getEventName(): String = NAME
+    override fun getEventData(): WritableMap = Arguments.createMap().apply {
+        putInt("index", index)
+    }
+
+    companion object { const val NAME = "topPageRevealed" }
+}
+
 /** The user pulled to refresh from the top of the container. */
 class TabsRefreshEvent(surfaceId: Int, viewTag: Int) :
     Event<TabsRefreshEvent>(surfaceId, viewTag) {
