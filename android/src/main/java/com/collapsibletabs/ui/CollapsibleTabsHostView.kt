@@ -92,6 +92,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     /** Current header offset, 0..headerHeightPx. */
     private var headerOffset = 0
+    /** 'direction' collapse mode: offset follows the scroll DELTA. */
+    private var directionMode = false
+    /** Last seen scrollY of the active page (delta source for direction mode). */
+    private var lastActiveScrollY = 0
     private var collapsed = false
     private var activeIndex = 0
     private var lastEmittedIndex = -1
@@ -180,6 +184,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     fun setCollapseThresholdDp(dp: Int) {
         collapseThresholdPx = (dp * density).toInt()
         updateCollapsed()
+    }
+
+    fun setCollapseMode(value: String) {
+        directionMode = value == "direction"
+        // Re-anchor the delta tracker so the first scroll after a mode change
+        // doesn't jump.
+        lastActiveScrollY = activeScrollView()?.scrollY ?: 0
     }
 
     fun setSwipeEnabled(value: Boolean) {
@@ -403,7 +414,19 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private val scrollChangeListener =
         View.OnScrollChangeListener { v, _, scrollY, _, _ ->
             if (v !== activeScrollView()) return@OnScrollChangeListener
-            val target = scrollY.coerceIn(0, headerHeightPx)
+            val target = if (directionMode) {
+                // Follow the scroll DELTA: any up-scroll reveals the header,
+                // any down-scroll hides it; pinned open at the very top.
+                // Because the offset only ever grows at the content's own
+                // rate from the top, offset <= scrollY holds and the content
+                // never leaves a gap under the tab bar.
+                val dy = scrollY - lastActiveScrollY
+                if (scrollY <= 0) 0
+                else (headerOffset + dy).coerceIn(0, headerHeightPx)
+            } else {
+                scrollY.coerceIn(0, headerHeightPx)
+            }
+            lastActiveScrollY = scrollY
             // While the active page is still catching up to the header
             // (content mounting), a clamped scroll must not pop the header
             // open — only real user scrolls move it down.
@@ -570,8 +593,15 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             pendingSync.put(page, headerOffset)
             return
         }
-        val desired =
-            if (headerOffset >= headerHeightPx) maxOf(sv.scrollY, headerHeightPx) else headerOffset
+        // Direction mode: the header may sit anywhere relative to the page's
+        // own scroll, so a page only ever needs to be at least `offset` deep
+        // (never scrolled back up to match). Classic: exact match below the
+        // full-collapse point.
+        val desired = when {
+            directionMode -> maxOf(sv.scrollY, headerOffset)
+            headerOffset >= headerHeightPx -> maxOf(sv.scrollY, headerHeightPx)
+            else -> headerOffset
+        }
         if (sv.scrollY != desired) sv.scrollTo(0, desired)
         if (sv.scrollY < desired) pendingSync.put(page, desired) else pendingSync.delete(page)
     }
@@ -594,7 +624,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             trySync(activeIndex)
             if (pendingSync.indexOfKey(activeIndex) >= 0) return
         }
-        val target = sv.scrollY.coerceIn(0, headerHeightPx)
+        lastActiveScrollY = sv.scrollY
+        val target = if (directionMode) {
+            // Only concede when the page cannot hold the current offset.
+            if (sv.scrollY < headerOffset) sv.scrollY.coerceIn(0, headerHeightPx) else headerOffset
+        } else {
+            sv.scrollY.coerceIn(0, headerHeightPx)
+        }
         if (target != headerOffset) applyHeaderOffset(target, animated = isLaidOut)
     }
 
@@ -625,6 +661,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         private var downX = 0f
         private var downY = 0f
         private var downOnBand = false
+        private var downOnHorizontalScrollable = false
         private var forwarding = false
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -667,6 +704,23 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
         private fun isOnHeader(y: Float): Boolean = y < headerHeightPx - headerOffset
 
+        /** Depth-first hit test for a horizontally scrollable view under the
+         *  point (coordinates local to [view]). */
+        private fun horizontallyScrollableAt(view: View, x: Float, y: Float): Boolean {
+            if (x < 0f || y < 0f || x > view.width || y > view.height) return false
+            if (view.canScrollHorizontally(-1) || view.canScrollHorizontally(1)) return true
+            if (view is android.widget.HorizontalScrollView) return true
+            if (view !is ViewGroup) return false
+            for (i in 0 until view.childCount) {
+                val child = view.getChildAt(i)
+                if (child.visibility != View.VISIBLE) continue
+                val cx = x - child.left - child.translationX
+                val cy = y - child.top - child.translationY
+                if (horizontallyScrollableAt(child, cx, cy)) return true
+            }
+            return false
+        }
+
         /** Where forwarded events go: the active page's scroll view, or null
          *  to swallow the gesture (horizontal drag on the header: inert by
          *  design, but it must still cancel the press under the finger). */
@@ -692,6 +746,15 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                     downX = ev.x
                     downY = ev.y
                     downOnBand = isOnBand(ev.y)
+                    // A horizontal list INSIDE the header (date pickers, chip
+                    // rows…) owns its own horizontal gestures — never swallow
+                    // those.
+                    downOnHorizontalScrollable = isOnHeader(ev.y) &&
+                        horizontallyScrollableAt(
+                            headerSlot,
+                            ev.x - headerSlot.left - headerSlot.translationX,
+                            ev.y - headerSlot.top - headerSlot.translationY,
+                        )
                     forwarding = false
                     forwardTarget = null
                 }
@@ -702,7 +765,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                     val vertical = kotlin.math.abs(dy) > touchSlop && kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.5f
                     val horizontal = kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f
                     val target: View? = if (vertical) activeScrollView() else null
-                    val swallow = horizontal && isOnHeader(downY)
+                    val swallow = horizontal && isOnHeader(downY) && !downOnHorizontalScrollable
                     if (target != null || swallow) {
                         // Claim the gesture (band children get ACTION_CANCEL)
                         // and open it on the target with a synthetic DOWN at

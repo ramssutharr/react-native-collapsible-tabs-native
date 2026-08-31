@@ -35,6 +35,13 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
    */
   collapseThreshold?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /**
+   * 'classic' (default): the header offset mirrors the active list's scroll
+   * position, so it comes back as the content nears the top.
+   * 'direction': the offset follows the scroll delta — any upward scroll
+   * reveals the header, any downward scroll hides it (home-feed feel).
+   */
+  collapseMode?: 'classic' | 'direction';
   style?: StyleProp<ViewStyle>;
 };
 
@@ -59,6 +66,7 @@ export function CollapsibleTabView<T extends Route = Route>({
   lazy = true,
   collapseThreshold = 0,
   onCollapsedChange,
+  collapseMode = 'classic',
   style,
 }: CollapsibleTabViewProps<T>) {
   const { index, routes } = navigationState;
@@ -80,6 +88,7 @@ export function CollapsibleTabView<T extends Route = Route>({
       onIndexChange={onIndexChange}
       onCollapsedChange={onCollapsedChange}
       collapseThreshold={collapseThreshold}
+      collapseMode={collapseMode}
       swipeEnabled={swipeEnabled}
       refreshing={refreshing}
       onRefresh={onRefresh}

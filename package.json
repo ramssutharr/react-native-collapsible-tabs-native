@@ -1,6 +1,6 @@
 {
   "name": "react-native-collapsible-tabs-native",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Native collapsible tabs for React Native (Fabric): collapsing header + pinned tab bar over a native pager, driven by UIKit/ViewPager2 so header and list move in the same frame.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

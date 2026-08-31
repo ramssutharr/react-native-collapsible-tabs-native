@@ -32,6 +32,8 @@ export type CollapsibleTabsShellProps = {
   /** Fires on threshold crossings only — see the native spec. */
   onCollapsedChange?: (collapsed: boolean) => void;
   collapseThreshold?: number;
+  /** See CollapsibleTabView's `collapseMode`. Default 'classic'. */
+  collapseMode?: 'classic' | 'direction';
   swipeEnabled?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -58,6 +60,7 @@ export function CollapsibleTabsShell({
   onIndexChange,
   onCollapsedChange,
   collapseThreshold = 0,
+  collapseMode = 'classic',
   swipeEnabled = true,
   refreshing = false,
   onRefresh,
@@ -124,6 +127,7 @@ export function CollapsibleTabsShell({
         pageCount={pages.length}
         selectedIndex={index}
         collapseThreshold={Math.round(collapseThreshold)}
+        collapseMode={collapseMode}
         swipeEnabled={swipeEnabled}
         refreshing={refreshing}
         onPageSelected={handlePageSelected}

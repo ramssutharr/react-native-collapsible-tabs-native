@@ -89,6 +89,11 @@ class CollapsibleTabsViewManager(
         view.setCollapseThresholdDp(value)
     }
 
+    @ReactProp(name = "collapseMode")
+    override fun setCollapseMode(view: CollapsibleTabsHostView, value: String?) {
+        view.setCollapseMode(value ?: "classic")
+    }
+
     @ReactProp(name = "swipeEnabled")
     override fun setSwipeEnabled(view: CollapsibleTabsHostView, value: Boolean) {
         view.setSwipeEnabled(value)

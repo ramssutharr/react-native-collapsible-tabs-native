@@ -65,10 +65,8 @@ roadmap fine print:
   index settles (the default `TabBar` moves its underline instantly).
 - No scroll-position events to JS. You get `onPageSelected` and the
   `onCollapsedChange` crossing — nothing per-frame (that's the point).
-- One collapse behaviour: the header scrolls away with the content and
-  returns when the content approaches the top. There is no
-  "return-on-any-up-scroll" (direction) mode and no min-header/sticky-segment
-  support yet.
+- No min-header / sticky-segment support: the header collapses fully as one
+  band (choose `collapseMode` for when it comes back).
 - Horizontal swipes that start **on the header** are deliberately inert (they
   neither page nor scroll). Swipe on the content or use the tab strip. The
   tab-bar band scrolls its own content horizontally if you render one that
@@ -166,6 +164,7 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `tabBarProps` | `TabBarProps` | colours/`onTabPress` for the default `TabBar`; ignored with `renderTabBar` |
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
+| `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
 | `swipeEnabled` | `boolean` | default `true` |
 | `lazy` | `boolean` | default `true`; mount a page on first visit |

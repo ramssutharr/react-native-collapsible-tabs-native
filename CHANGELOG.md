@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-08-31
+
+- New: `collapseMode?: 'classic' | 'direction'` (default `'classic'`).
+  `'direction'` makes the header offset follow the scroll delta — any upward
+  scroll reveals the header, any downward scroll hides it (home-feed feel),
+  pinned open at the very top. Tab switches keep the header where it is and
+  only concede when the incoming page cannot hold the current offset.
+- Fix (Android): a horizontal list inside the header (date pickers, chip
+  rows) could not be swiped — the header's horizontal-drag swallow now
+  hit-tests for a horizontally scrollable view under the finger and leaves
+  the gesture to it.
+
 ## 0.1.1 — 2026-08-29
 
 - Fix: a swipe or drag that ended over a Pressable fired the press. The

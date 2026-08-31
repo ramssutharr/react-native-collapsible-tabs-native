@@ -62,6 +62,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   private var headerOffset: CGFloat = 0
   private var pull: CGFloat = 0
+  /// 'direction' collapse mode: the offset follows the scroll DELTA.
+  private var directionMode = false
+  /// Last seen offset of the active page (delta source for direction mode).
+  private var lastActiveY: CGFloat = 0
   private var collapsed = false
   private var activeIndex = 0
   private var lastEmittedIndex = -1
@@ -162,6 +166,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public func setCollapseThreshold(_ threshold: CGFloat) {
     collapseThreshold = threshold
     updateCollapsed()
+  }
+
+  @objc public func setCollapseMode(_ mode: String) {
+    directionMode = mode == "direction"
+    // Re-anchor the delta tracker so the first scroll after a mode change
+    // doesn't jump.
+    lastActiveY = activeScrollView().map { adjustedY(of: $0) } ?? 0
   }
 
   @objc public func setSwipeEnabled(_ enabled: Bool) {
@@ -299,13 +310,29 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     guard scrollView === activeScrollView() else { return }
-    let y = scrollView.contentOffset.y + scrollView.contentInset.top - refreshInsetApplied(to: scrollView)
-    let target = min(max(y, 0), headerHeight)
+    let y = adjustedY(of: scrollView)
+    let target: CGFloat
+    if directionMode {
+      // Follow the scroll DELTA: any up-scroll reveals the header, any
+      // down-scroll hides it; pinned open at the very top. The offset only
+      // ever grows at the content's own rate from the top, so
+      // offset <= y holds and the content never leaves a gap under the
+      // tab bar.
+      let dy = y - lastActiveY
+      target = y <= 0 ? 0 : min(max(headerOffset + dy, 0), headerHeight)
+    } else {
+      target = min(max(y, 0), headerHeight)
+    }
+    lastActiveY = y
     // While the active page is still catching up to the header (content
     // mounting), a clamped offset must not pop the header open.
     if pendingSync[activeIndex] != nil, target < headerOffset { return }
     pull = max(0, -y)
     setHeaderOffsetNow(target)
+  }
+
+  private func adjustedY(of scrollView: UIScrollView) -> CGFloat {
+    scrollView.contentOffset.y + scrollView.contentInset.top - refreshInsetApplied(to: scrollView)
   }
 
   /// A page list started dragging: whatever React press was armed under the
@@ -393,7 +420,15 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     let current = sv.contentOffset.y
-    let desired = headerOffset >= headerHeight ? max(current, headerHeight) : headerOffset
+    // Direction mode: a page only ever needs to be at least `offset` deep
+    // (never scrolled back up to match). Classic: exact match below the
+    // full-collapse point.
+    let desired: CGFloat
+    if directionMode {
+      desired = max(current, headerOffset)
+    } else {
+      desired = headerOffset >= headerHeight ? max(current, headerHeight) : headerOffset
+    }
     if current != desired { sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired) }
     if sv.contentOffset.y < desired { pendingSync[page] = desired } else { pendingSync[page] = nil }
   }
@@ -430,7 +465,15 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       trySync(activeIndex)
       if pendingSync[activeIndex] != nil { return }
     }
-    let target = min(max(sv.contentOffset.y, 0), headerHeight)
+    let y = adjustedY(of: sv)
+    lastActiveY = y
+    let target: CGFloat
+    if directionMode {
+      // Only concede when the page cannot hold the current offset.
+      target = y < headerOffset ? min(max(y, 0), headerHeight) : headerOffset
+    } else {
+      target = min(max(y, 0), headerHeight)
+    }
     if target != headerOffset { animateHeaderOffset(to: target) }
   }
 

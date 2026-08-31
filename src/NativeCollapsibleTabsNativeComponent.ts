@@ -54,6 +54,13 @@ export interface NativeProps extends ViewProps {
    * lets a screen swap chrome without a per-frame JS event.
    */
   collapseThreshold?: WithDefault<Int32, 0>;
+  /**
+   * 'classic': the header offset mirrors the active list's scroll position
+   * (returns as the content nears the top). 'direction': the offset follows
+   * the scroll DELTA — any upward scroll brings the header back, any
+   * downward scroll hides it (home-feed feel).
+   */
+  collapseMode?: WithDefault<string, 'classic'>;
   swipeEnabled?: WithDefault<boolean, true>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
   refreshing?: WithDefault<boolean, false>;
