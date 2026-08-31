@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 — 2026-08-31
+
+- Fix: pull-to-refresh no longer arms when no `onRefresh` handler is
+  provided (`refreshEnabled` is derived from it). Previously the spinner
+  started on pull and nothing could ever clear it.
+- Fix: when the header (or tab bar) re-measures after first render — data
+  arriving, images/fonts settling — the collapse offset is re-derived from
+  the active list's real scroll position instead of merely clamped.
+  Previously the pages re-padded to the new height while the bands kept a
+  stale offset, showing a phantom gap under the tab bar until the next
+  scroll.
+
 ## 0.2.0 — 2026-08-31
 
 - New: `collapseMode?: 'classic' | 'direction'` (default `'classic'`).

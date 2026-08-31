@@ -161,8 +161,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         val px = (dp * density).toInt()
         if (px == headerHeightPx) return
         headerHeightPx = px
-        // Keep the offset valid for the new range.
-        applyHeaderOffset(headerOffset.coerceIn(0, headerHeightPx), animated = false)
+        resyncOffsetToActive()
         requestLayout()
     }
 
@@ -171,6 +170,31 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         if (px == tabBarHeightPx) return
         tabBarHeightPx = px
         requestLayout()
+    }
+
+    /**
+     * The header re-measured (content loaded, fonts settled…). Clamping the
+     * old offset is not enough: pages re-pad to the NEW height while the
+     * bands sit at an offset derived from the OLD one, which shows as a
+     * phantom gap under the tab bar until the next scroll. Re-derive the
+     * offset from the active list's actual position instead.
+     */
+    private fun resyncOffsetToActive() {
+        val sv = activeScrollView()
+        if (sv == null) {
+            applyHeaderOffset(headerOffset.coerceIn(0, headerHeightPx), animated = false)
+            return
+        }
+        val y = sv.scrollY
+        lastActiveScrollY = y
+        val target = if (directionMode) {
+            // Keep the delta-driven offset, but hold both invariants:
+            // 0 <= offset <= min(y, headerHeightPx).
+            minOf(headerOffset, headerHeightPx, maxOf(y, 0))
+        } else {
+            y.coerceIn(0, headerHeightPx)
+        }
+        applyHeaderOffset(target, animated = false)
     }
 
     fun setPageCount(value: Int) {
@@ -196,6 +220,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     fun setSwipeEnabled(value: Boolean) {
         swipeEnabled = value
         pager.isUserInputEnabled = value
+    }
+
+    /** False when the screen provides no onRefresh — the pull gesture must
+     *  not arm at all (nothing would ever clear the spinner). */
+    fun setRefreshEnabled(value: Boolean) {
+        refreshLayout.isEnabled = value
+        if (!value && refreshLayout.isRefreshing) refreshLayout.isRefreshing = false
     }
 
     fun setRefreshing(value: Boolean) {

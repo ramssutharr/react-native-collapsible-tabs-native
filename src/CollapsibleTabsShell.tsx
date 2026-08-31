@@ -130,6 +130,7 @@ export function CollapsibleTabsShell({
         collapseMode={collapseMode}
         swipeEnabled={swipeEnabled}
         refreshing={refreshing}
+        refreshEnabled={onRefresh != null}
         onPageSelected={handlePageSelected}
         onCollapsedChange={handleCollapsedChange}
         onRefresh={handleRefresh}

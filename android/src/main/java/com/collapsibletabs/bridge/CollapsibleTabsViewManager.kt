@@ -104,6 +104,11 @@ class CollapsibleTabsViewManager(
         view.setRefreshing(value)
     }
 
+    @ReactProp(name = "refreshEnabled")
+    override fun setRefreshEnabled(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setRefreshEnabled(value)
+    }
+
     // ── RN child mounting ──
     // Every RN child is re-parented into a native slot (header band, tab-bar
     // band, or a pager page) keyed by its nativeID. The ViewGroupManager child

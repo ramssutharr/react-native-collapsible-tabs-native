@@ -80,6 +80,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var giveUpWork: DispatchWorkItem?
 
   // Pull-to-refresh
+  /** False when the screen provides no onRefresh — the pull gesture must not
+   *  arm at all (nothing would ever clear the spinner). */
+  private var refreshEnabled = true
   private var refreshing = false
   private weak var refreshHost: UIScrollView?
   private var refreshHostOriginalInset: CGFloat = 0
@@ -130,15 +133,38 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public func setHeaderHeight(_ height: CGFloat) {
     guard height != headerHeight else { return }
     headerHeight = height
-    headerOffset = min(headerOffset, headerHeight)
     setNeedsLayout()
-    applyBandTransform()
+    resyncOffsetToActive()
   }
 
   @objc public func setTabBarHeight(_ height: CGFloat) {
     guard height != tabBarHeight else { return }
     tabBarHeight = height
     setNeedsLayout()
+    // Pages re-pad by header+tabBar; the offset itself is unaffected, but the
+    // bands must re-layout at the new geometry.
+    applyBandTransform()
+  }
+
+  /// The header re-measured (content loaded, fonts settled…). Clamping the
+  /// old offset is not enough: pages re-pad to the NEW height while the
+  /// bands sit at an offset derived from the OLD one, which shows as a
+  /// phantom gap under the tab bar until the next scroll. Re-derive the
+  /// offset from the active list's actual position instead.
+  private func resyncOffsetToActive() {
+    guard let sv = activeScrollView() else {
+      setHeaderOffsetNow(min(headerOffset, headerHeight))
+      return
+    }
+    let y = adjustedY(of: sv)
+    lastActiveY = y
+    if directionMode {
+      // Keep the delta-driven offset, but hold both invariants:
+      // 0 <= offset <= min(y, headerHeight).
+      setHeaderOffsetNow(min(headerOffset, headerHeight, max(y, 0)))
+    } else {
+      setHeaderOffsetNow(min(max(y, 0), headerHeight))
+    }
   }
 
   @objc public func setPageCount(_ count: Int) {
@@ -178,6 +204,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public func setSwipeEnabled(_ enabled: Bool) {
     swipeEnabled = enabled
     pager.isScrollEnabled = enabled
+  }
+
+  @objc public func setRefreshEnabled(_ value: Bool) {
+    refreshEnabled = value
+    if !value { endRefresh() }
   }
 
   @objc public func setRefreshing(_ value: Bool) {
@@ -296,7 +327,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     tabBarSlot.transform = transform
     spinner.center = CGPoint(x: bounds.width / 2, y: max(pull, 0) / 2)
     if !refreshing {
-      spinner.alpha = min(1, pull / Self.refreshThreshold)
+      spinner.alpha = refreshEnabled ? min(1, pull / Self.refreshThreshold) : 0
       spinner.transform = CGAffineTransform(rotationAngle: pull / Self.refreshThreshold * .pi)
     }
   }
@@ -343,7 +374,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public func handleScrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
     guard scrollView === activeScrollView() else { return }
-    if !refreshing, pull >= Self.refreshThreshold {
+    if refreshEnabled, !refreshing, pull >= Self.refreshThreshold {
       beginRefresh(emit: true)
     }
   }
@@ -552,7 +583,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   private func beginRefresh(emit: Bool) {
-    guard !refreshing else { return }
+    guard refreshEnabled, !refreshing else { return }
     refreshing = true
     spinner.alpha = 1
     spinner.transform = .identity
@@ -634,7 +665,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     case .ended, .cancelled:
       let velocity = -pan.velocity(in: self).y
       if sv.contentOffset.y < 0 {
-        if !refreshing, pull >= Self.refreshThreshold {
+        if refreshEnabled, !refreshing, pull >= Self.refreshThreshold {
           beginRefresh(emit: true)
         } else if !refreshing {
           sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: 0), animated: true)

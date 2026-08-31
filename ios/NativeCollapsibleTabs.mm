@@ -20,6 +20,7 @@
 - (void)setSwipeEnabled:(BOOL)enabled;
 - (void)setCollapseMode:(NSString *)mode;
 - (void)setRefreshing:(BOOL)refreshing;
+- (void)setRefreshEnabled:(BOOL)enabled;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
 - (void)unmountChild:(UIView *)child;
 - (void)handleScrollViewDidScroll:(UIScrollView *)scrollView;
@@ -233,6 +234,9 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.refreshing != previousProps.refreshing) {
     [_content setRefreshing:newProps.refreshing];
+  }
+  if (oldProps == nullptr || newProps.refreshEnabled != previousProps.refreshEnabled) {
+    [_content setRefreshEnabled:newProps.refreshEnabled];
   }
 
   [super updateProps:props oldProps:oldProps];

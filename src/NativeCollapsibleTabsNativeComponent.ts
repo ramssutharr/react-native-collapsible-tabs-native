@@ -64,6 +64,12 @@ export interface NativeProps extends ViewProps {
   swipeEnabled?: WithDefault<boolean, true>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
   refreshing?: WithDefault<boolean, false>;
+  /**
+   * Whether the pull gesture arms at all. The JS side derives this from the
+   * presence of `onRefresh` — without a handler nothing would ever clear the
+   * spinner.
+   */
+  refreshEnabled?: WithDefault<boolean, true>;
 
   onPageSelected?: DirectEventHandler<PageSelectedEvent>;
   onCollapsedChange?: DirectEventHandler<CollapsedChangeEvent>;
