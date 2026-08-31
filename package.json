@@ -1,7 +1,7 @@
 {
   "name": "react-native-collapsible-tabs-native",
   "version": "0.1.1",
-  "description": "Instagram/Twitter-style collapsing header + tab pager for React Native, with the collapse owned by the platform (UIKit / Android) so header and list can never drift apart.",
+  "description": "Native collapsible tabs for React Native (Fabric): collapsing header + pinned tab bar over a native pager, driven by UIKit/ViewPager2 so header and list move in the same frame.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "react-native": "./src/index.ts",
@@ -23,16 +23,23 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "keywords": [
-    "react-native",
-    "ios",
     "android",
     "collapsible",
-    "tabs",
-    "tab-view",
+    "collapsible-tab-view",
+    "collapsible-tabs",
     "collapsing-header",
-    "sticky-header",
     "fabric",
-    "new-architecture"
+    "flash-list",
+    "ios",
+    "new-architecture",
+    "profile-header",
+    "react-native",
+    "sticky-header",
+    "sticky-tab-bar",
+    "tab-view",
+    "tabs",
+    "uiscrollview",
+    "viewpager2"
   ],
   "repository": {
     "type": "git",

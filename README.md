@@ -1,35 +1,85 @@
 # react-native-collapsible-tabs-native
 
-Instagram / Twitter-style **collapsing header over a tab pager**, where the
-collapse is owned by the platform (UIKit on iOS, a `ViewPager2` shell on
-Android) — so the header and the list move in the **same frame**, always.
+Native **collapsible tabs** for React Native: a collapsing header with a
+pinned tab bar over a swipeable tab pager — the Instagram / Twitter profile
+layout — where the collapse is driven by **native code** (UIKit on iOS,
+`ViewPager2` on Android), not by a JS or Reanimated worklet.
 
-## Why another collapsible tabs library?
+Because the header is translated inside the same native scroll callback that
+moves the list, the header, tab bar and list content always move **in the
+same frame**. There is no per-frame JS work in the scroll path, so heavy JS
+load cannot desynchronise them.
 
-Every JS implementation of this pattern moves the list content from the
-native scroll view but moves the header from an animation worklet fed by
-that scroll's *event*. Two update paths → the header is at least one frame
-behind the list, which shows as a gap opening between the tab bar and the
-content on a fast fling. It is worst on Android, visible on iOS under JS
-load, and no amount of worklet tuning fixes it.
+Your header, tab bar and tab pages are ordinary React components. The native
+side only owns geometry and gestures.
 
-Here the header is translated from the **same native scroll callback** that
-moved the content, so the two cannot drift apart. Your header, tab bar and
-tab pages stay ordinary React components — the shell only owns geometry
-and gestures.
+<p>
+  <a href="https://www.npmjs.com/package/react-native-collapsible-tabs-native"><img src="https://img.shields.io/npm/v/react-native-collapsible-tabs-native.svg" alt="npm version" /></a>
+  <a href="https://github.com/ramssutharr/react-native-collapsible-tabs-native/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/react-native-collapsible-tabs-native.svg" alt="license" /></a>
+</p>
 
-- ✅ Header + tab bar + list in perfect sync (native `OnScrollChangeListener`
-  / `UIScrollViewDelegate`, zero JS in the scroll path)
-- ✅ Drag the header to scroll the list (with native-feeling fling)
-- ✅ Horizontal swipes between tabs; lazily-mounted tabs land at the right
-  offset; tab-switch keeps the header where it was
-- ✅ One container-level pull-to-refresh
-- ✅ `onCollapsedChange` threshold event (swap a sticky title without
-  per-frame JS)
-- ✅ Any list works: `ScrollView`, `FlatList`, `SectionList`,
+## Why not a JS implementation?
+
+JS collapsible-tab libraries (including ones built on Reanimated) move the
+list content from the native scroll view but move the header from an
+animation callback fed by that scroll's *event*. Two update paths mean the
+header runs at least one frame behind the list — visible as a gap opening
+between the tab bar and the content on a fast fling, worst on Android and on
+iOS whenever the JS thread is busy. This library removes the second update
+path instead of trying to keep up with it.
+
+## What it does
+
+- Collapsing header + pinned tab bar over a native horizontal pager, in
+  frame-perfect sync with the active list (native
+  `UIScrollViewDelegate` / `View.OnScrollChangeListener`).
+- Any vertical list that renders a React Native `ScrollView` works as a tab
+  page: `ScrollView`, `FlatList`, `SectionList`,
   [FlashList](https://github.com/Shopify/flash-list),
-  [LegendList](https://github.com/LegendApp/legend-list)… via `createTabList`
-- ✅ New Architecture (Fabric) only; React Native ≥ 0.76
+  [LegendList](https://github.com/LegendApp/legend-list) — wrapped with
+  `createTabList` so its content is padded under the header.
+- Vertical drags on the header (or tab bar) scroll the active page, with a
+  display-link-driven fling on iOS and native event forwarding on Android.
+- Swipe between tabs; tab pages mount lazily on first visit; a
+  freshly-mounted or neighbouring page is aligned to the current header
+  offset before it becomes visible.
+- Container-level pull-to-refresh (`refreshing` / `onRefresh`): the scroll
+  view bounce on iOS, `SwipeRefreshLayout` on Android.
+- `onCollapsedChange` fires once per threshold crossing (not per frame) — use
+  it to swap fixed chrome, e.g. reveal a title in your own top bar.
+- Presses under a finger that scrolled are cancelled correctly: a swipe that
+  ends on a `Pressable` does not trigger it; a deliberate tap does.
+- A minimal default `TabBar` (equal-width labels + underline, colours via
+  props), or bring your own with `renderTabBar`.
+- TypeScript types throughout.
+
+## What it does **not** do
+
+Read this before choosing the library — these are real constraints, not
+roadmap fine print:
+
+- **New Architecture (Fabric) only.** No Paper support. React Native ≥ 0.76
+  (developed and tested on RN 0.83).
+- The pager's swipe **position is not exposed to JS**, so a custom tab
+  indicator cannot track the finger mid-swipe; it can only animate when the
+  index settles (the default `TabBar` moves its underline instantly).
+- No scroll-position events to JS. You get `onPageSelected` and the
+  `onCollapsedChange` crossing — nothing per-frame (that's the point).
+- One collapse behaviour: the header scrolls away with the content and
+  returns when the content approaches the top. There is no
+  "return-on-any-up-scroll" (direction) mode and no min-header/sticky-segment
+  support yet.
+- Horizontal swipes that start **on the header** are deliberately inert (they
+  neither page nor scroll). Swipe on the content or use the tab strip. The
+  tab-bar band scrolls its own content horizontally if you render one that
+  does.
+- If a tab's content is too short to hold the current collapse offset, the
+  header eases back to the offset that tab can hold after the switch settles
+  (Twitter-style), rather than padding the page.
+- Pull-to-refresh thresholds are fixed (≈70 pt pull, 60 pt spinner band on
+  iOS; platform defaults on Android) and the spinner is not customisable yet.
+- Pages stay mounted once visited (`lazy` only defers the first mount).
+- No web / Expo Go support (native code; works in Expo dev clients / prebuild).
 
 ## Install
 
@@ -38,12 +88,13 @@ yarn add react-native-collapsible-tabs-native
 cd ios && pod install
 ```
 
-Autolinked on both platforms. New Architecture must be enabled (it is the
-default since RN 0.76).
+Autolinked on both platforms. New Architecture must be enabled (default since
+RN 0.76).
 
 ## Usage
 
 ```tsx
+import { useState } from 'react';
 import { FlashList } from '@shopify/flash-list';
 import {
   CollapsibleTabView,
@@ -96,10 +147,10 @@ function Profile() {
 
 ### The one rule
 
-Tab bodies **must** pad their content by the header + tab-bar height (the
-bands are overlaid on the pager, not stacked above it). Use `createTabList`
-(or the bundled `TabScrollView` / `TabFlatList`) and it's done for you; or
-read `useCollapsibleTabs().contentPaddingTop` yourself.
+Tab bodies **must** pad their content by the header + tab-bar height — the
+bands are overlaid on the pager, not stacked above it. `createTabList` (and
+the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
+`useCollapsibleTabs().contentPaddingTop` and apply it yourself.
 
 ## API
 
@@ -107,69 +158,85 @@ read `useCollapsibleTabs().contentPaddingTop` yourself.
 
 | prop | type | notes |
 | --- | --- | --- |
-| `navigationState` | `{ index, routes }` | `react-native-tab-view` shape |
-| `renderScene` | `({ route }) => ReactNode` | one page per route; mounted lazily on first visit |
-| `onIndexChange` | `(index) => void` | fired on swipe / tab press |
+| `navigationState` | `{ index, routes }` | routes are `{ key, title }` (`react-native-tab-view` shape) |
+| `renderScene` | `({ route }) => ReactNode` | one page per route |
+| `onIndexChange` | `(index) => void` | tab press or swipe settled |
 | `renderHeader` | `() => ReactNode` | the collapsing header |
-| `renderTabBar` | `({ routes, index, onIndexChange }) => ReactNode` | defaults to `TabBar` |
-| `tabBarProps` | `TabBarProps` | colours/styles for the default `TabBar` |
-| `refreshing` / `onRefresh` | | container-level pull-to-refresh |
-| `collapseThreshold` / `onCollapsedChange` | | crossing-only event |
+| `renderTabBar` | `({ routes, index, onIndexChange }) => ReactNode` | defaults to `TabBar`; return `null` to put your tabs inside the header instead |
+| `tabBarProps` | `TabBarProps` | colours/`onTabPress` for the default `TabBar`; ignored with `renderTabBar` |
+| `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
+| `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
+| `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
 | `swipeEnabled` | `boolean` | default `true` |
-| `lazy` | `boolean` | default `true` |
+| `lazy` | `boolean` | default `true`; mount a page on first visit |
+| `style` | `ViewStyle` | shell container style |
 
 ### `createTabList(List)`
 
-Returns `List` with the shell padding applied. `TabScrollView` and
-`TabFlatList` are provided; for third-party lists:
+Wraps any list component that renders an RN `ScrollView` and forwards
+`contentContainerStyle`, adding the shell's top padding. `TabScrollView` and
+`TabFlatList` ship prebuilt:
 
 ```ts
-import { FlashList } from '@shopify/flash-list';
-import { LegendList } from '@legendapp/list';
-
 const TabFlashList = createTabList(FlashList);
 const TabLegendList = createTabList(LegendList);
 ```
 
-Any component that renders a React Native `ScrollView` and forwards
-`contentContainerStyle` works — the shell finds the scroll view natively.
+### `<TabBar>`
+
+The default strip: equal-width labels with an underline.
+Props: `routes`, `index`, `onIndexChange`, `onTabPress?`, `activeColor?`,
+`inactiveColor?`, `indicatorColor?`, `backgroundColor?`, `style?`.
 
 ### `<CollapsibleTabsShell>`
 
-The lower-level primitive (`header`, `tabBar`, `pages[]`, `index`, …) if you
-don't want the tab-view API.
+The lower-level primitive if you don't want the tab-view-shaped API:
+`header` / `tabBar` / `pages[]` / `index` / `onIndexChange` plus the same
+collapse/refresh props.
 
 ### `useCollapsibleTabs()`
 
-`{ isNativeShell, contentPaddingTop, activeIndex }`.
-
-## Behaviour notes
-
-- Horizontal swipes on the **header** are inert by design; swipe on the
-  content or use the tab strip. Vertical drags on the header scroll the
-  active page.
-- A tab whose content is too short to hold the current collapse eases the
-  header back to what it can hold (Twitter's behaviour) after it settles.
-- Pull-to-refresh: iOS uses the scroll view's bounce (pull ≥ 70pt); Android
-  uses a `SwipeRefreshLayout`. Keep `refreshing` true until your reload
-  finishes.
+`{ isNativeShell, contentPaddingTop, activeIndex }` — for custom tab bodies.
 
 ## How it works
 
-Fabric mounts the header, tab bar and pages as children of the native view;
-the native side re-parents them by `nativeID` into slots: a header band and
-a tab-bar band drawn above a horizontal pager (`UIScrollView` with paging /
-`ViewPager2`). The active page's vertical scroll view is located and
-observed natively; its offset, clamped to the header height, becomes the
-bands' translation. Neighbouring pages are pre-aligned during a swipe, and
-pages that mount late (lazy) are aligned as their content grows.
+Fabric mounts your header, tab bar and pages as children of the native view;
+the native side re-parents them by `nativeID` into slots: a header band and a
+tab-bar band drawn above a horizontal pager (paging `UIScrollView` on iOS,
+`ViewPager2` on Android). The active page's vertical scroll view is located
+and observed natively; its offset, clamped to the header height, becomes the
+bands' translation — applied in the same callback that moved the content.
+Neighbouring pages are pre-aligned during a swipe, and pages that mount late
+are aligned as their content grows. When the shell takes over a gesture it
+cancels React's in-flight touch, so buttons under the finger don't fire.
 
-## Contributing
-
-Issues and PRs welcome. The native code is small and heavily commented —
-`ios/NativeCollapsibleTabsContent.swift` and
-`android/src/main/java/com/collapsibletabs/ui/CollapsibleTabsHostView.kt`
+The native code is small and commented —
+[`ios/NativeCollapsibleTabsContent.swift`](ios/NativeCollapsibleTabsContent.swift)
+and
+[`android/src/main/java/com/collapsibletabs/ui/CollapsibleTabsHostView.kt`](android/src/main/java/com/collapsibletabs/ui/CollapsibleTabsHostView.kt)
 are the two files that matter.
+
+## FAQ
+
+**Is this a drop-in replacement for react-native-collapsible-tab-view or
+react-native-tab-view?**
+No. The `navigationState` / `renderScene` shape is intentionally similar so
+migration is mechanical, but the props are not identical and scroll-position
+values are not exposed to JS.
+
+**Does it work with react-native-screens / React Navigation?**
+Yes — it's a regular view; render it inside any screen.
+
+**Sticky items inside the header?**
+Not supported. The header collapses as one band; the tab bar is the only
+pinned element (and you can move your tabs *into* the header and pin
+nothing).
+
+## Keywords
+
+react-native collapsible tabs · collapsing header · sticky tab bar · profile
+header tabs · tab view · FlashList · Fabric · new architecture · UIScrollView
+· ViewPager2
 
 ## License
 
