@@ -99,6 +99,11 @@ class CollapsibleTabsViewManager(
         view.setSwipeEnabled(value)
     }
 
+    @ReactProp(name = "allowFullCollapse")
+    override fun setAllowFullCollapse(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setAllowFullCollapse(value)
+    }
+
     @ReactProp(name = "refreshing")
     override fun setRefreshing(view: CollapsibleTabsHostView, value: Boolean) {
         view.setRefreshing(value)

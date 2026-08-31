@@ -42,6 +42,15 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
    * reveals the header, any downward scroll hides it (home-feed feel).
    */
   collapseMode?: 'classic' | 'direction';
+  /**
+   * Let tabs whose content is too short scroll the header away anyway
+   * (default false). Without it a near-empty tab has nothing to scroll, so
+   * the header stays open there and pops back when you switch to it. With it,
+   * native hands such a page exactly the scroll range it lacks — so an empty
+   * state can be pushed up and the header collapses on every tab alike. Tabs
+   * with enough content are untouched.
+   */
+  allowFullCollapse?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -67,6 +76,7 @@ export function CollapsibleTabView<T extends Route = Route>({
   collapseThreshold = 0,
   onCollapsedChange,
   collapseMode = 'classic',
+  allowFullCollapse = false,
   style,
 }: CollapsibleTabViewProps<T>) {
   const { index, routes } = navigationState;
@@ -90,6 +100,7 @@ export function CollapsibleTabView<T extends Route = Route>({
       collapseThreshold={collapseThreshold}
       collapseMode={collapseMode}
       swipeEnabled={swipeEnabled}
+      allowFullCollapse={allowFullCollapse}
       refreshing={refreshing}
       onRefresh={onRefresh}
       lazy={lazy}

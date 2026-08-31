@@ -35,6 +35,8 @@ export type CollapsibleTabsShellProps = {
   /** See CollapsibleTabView's `collapseMode`. Default 'classic'. */
   collapseMode?: 'classic' | 'direction';
   swipeEnabled?: boolean;
+  /** See CollapsibleTabView's `allowFullCollapse`. Default false. */
+  allowFullCollapse?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   /**
@@ -62,6 +64,7 @@ export function CollapsibleTabsShell({
   collapseThreshold = 0,
   collapseMode = 'classic',
   swipeEnabled = true,
+  allowFullCollapse = false,
   refreshing = false,
   onRefresh,
   lazy = true,
@@ -129,6 +132,7 @@ export function CollapsibleTabsShell({
         collapseThreshold={Math.round(collapseThreshold)}
         collapseMode={collapseMode}
         swipeEnabled={swipeEnabled}
+        allowFullCollapse={allowFullCollapse}
         refreshing={refreshing}
         refreshEnabled={onRefresh != null}
         onPageSelected={handlePageSelected}

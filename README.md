@@ -43,6 +43,9 @@ path instead of trying to keep up with it.
 - Swipe between tabs; tab pages mount lazily on first visit; a
   freshly-mounted or neighbouring page is aligned to the current header
   offset before it becomes visible.
+- Optional `allowFullCollapse`: tabs with little or no content (an empty
+  state, one row) still scroll the header away, because native gives those
+  pages exactly the scroll range they lack.
 - Container-level pull-to-refresh (`refreshing` / `onRefresh`): the scroll
   view bounce on iOS, `SwipeRefreshLayout` on Android.
 - `onCollapsedChange` fires once per threshold crossing (not per frame) — use
@@ -71,9 +74,10 @@ roadmap fine print:
   neither page nor scroll). Swipe on the content or use the tab strip. The
   tab-bar band scrolls its own content horizontally if you render one that
   does.
-- If a tab's content is too short to hold the current collapse offset, the
-  header eases back to the offset that tab can hold after the switch settles
-  (Twitter-style), rather than padding the page.
+- By default, a tab whose content is too short to hold the current collapse
+  offset eases the header back to the offset that tab can hold once the
+  switch settles (Twitter-style). Set `allowFullCollapse` to give short pages
+  the missing scroll range instead, so every tab collapses alike.
 - Pull-to-refresh thresholds are fixed (≈70 pt pull, 60 pt spinner band on
   iOS; platform defaults on Android) and the spinner is not customisable yet.
 - Pages stay mounted once visited (`lazy` only defers the first mount).
@@ -165,6 +169,7 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
+| `allowFullCollapse` | `boolean` | default `false`. Let tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks (bottom inset / padding); tabs with enough content are untouched |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
 | `swipeEnabled` | `boolean` | default `true` |
 | `lazy` | `boolean` | default `true`; mount a page on first visit |

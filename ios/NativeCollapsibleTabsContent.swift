@@ -57,6 +57,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var selectedIndex = 0
   private var collapseThreshold: CGFloat = 0
   private var swipeEnabled = true
+  /// Give short pages the scroll range they lack so the header can always be
+  /// collapsed (see `applyCollapseSlack`).
+  private var allowFullCollapse = false
 
   // MARK: - State
 
@@ -76,6 +79,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var pageScrollViews: [Int: WeakBox<UIScrollView>] = [:]
   /// Offsets a page still has to reach (lazy mount / growing content).
   private var pendingSync: [Int: CGFloat] = [:]
+  /// Extra bottom inset this shell added per page for `allowFullCollapse`.
+  /// Tracked so the page's own inset can be restored exactly.
+  private var collapseSlack: [Int: CGFloat] = [:]
   private var contentSizeObservers: [Int: NSKeyValueObservation] = [:]
   private var giveUpWork: DispatchWorkItem?
 
@@ -135,6 +141,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     headerHeight = height
     setNeedsLayout()
     resyncOffsetToActive()
+    // The slack each page needs is measured against the header height.
+    applyCollapseSlackToAll()
+  }
+
+  @objc public func setAllowFullCollapse(_ value: Bool) {
+    guard value != allowFullCollapse else { return }
+    allowFullCollapse = value
+    applyCollapseSlackToAll()
   }
 
   @objc public func setTabBarHeight(_ height: CGFloat) {
@@ -248,6 +262,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       pageScrollViews[page] = nil
       contentSizeObservers[page] = nil
       pendingSync[page] = nil
+      collapseSlack[page] = nil
     }
     child.removeFromSuperview()
   }
@@ -262,6 +277,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     pageScrollViews.removeAll()
     contentSizeObservers.removeAll()
     pendingSync.removeAll()
+    collapseSlack.removeAll()
     fling?.stop()
     fling = nil
     refreshing = false
@@ -318,6 +334,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       pager.contentOffset = CGPoint(x: CGFloat(selectedIndex) * w, y: 0)
     }
     if w > 0 { ensureActiveScrollViewObserved() }
+    // Viewport height feeds every page's slack.
+    if h > 0 { applyCollapseSlackToAll() }
   }
 
   private func applyBandTransform() {
@@ -406,15 +424,59 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return cached
     }
     pageScrollViews[page] = nil
+    // A different scroll view carries none of our inset.
+    collapseSlack[page] = nil
     guard let root = pageChildren[page], let found = scrollViewResolver?(root) else { return nil }
     pageScrollViews[page] = WeakBox(found)
     if contentSizeObservers[page] == nil {
-      contentSizeObservers[page] = found.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
-        guard let self, self.pendingSync[page] != nil else { return }
-        self.trySync(page)
+      contentSizeObservers[page] = found.observe(\.contentSize, options: [.new]) { [weak self] sv, _ in
+        guard let self else { return }
+        // The content grew or shrank: the slack it needs changed with it.
+        self.applyCollapseSlack(to: sv, page: page)
+        if self.pendingSync[page] != nil { self.trySync(page) }
       }
     }
+    applyCollapseSlack(to: found, page: page)
     return found
+  }
+
+  // MARK: - Full collapse on short pages
+
+  /// A page shorter than the viewport + header has nothing to scroll, so the
+  /// header cannot be pushed away on that tab (and pops back open when you
+  /// switch to it). Hand it exactly the range it is missing as bottom
+  /// `contentInset` — which `maxOffset(of:)`, UIScrollView's own clamping and
+  /// its deceleration all honour — so the empty state scrolls up and the
+  /// header collapses like on any other tab. Pages that already have the
+  /// range get 0. Bottom inset never moves content or the current offset, so
+  /// applying this is invisible until the user scrolls.
+  private func applyCollapseSlack(to sv: UIScrollView, page: Int) {
+    let applied = collapseSlack[page] ?? 0
+    guard allowFullCollapse else {
+      if applied != 0 {
+        sv.contentInset.bottom -= applied
+        collapseSlack[page] = nil
+      }
+      return
+    }
+    guard sv.bounds.height > 0 else { return }
+    // The page's own range, with our slack discounted.
+    let natural = sv.contentSize.height + (sv.contentInset.bottom - applied) - sv.bounds.height
+    let needed = max(0, headerHeight - max(0, natural))
+    guard abs(needed - applied) > 0.5 else { return }
+    sv.contentInset.bottom += needed - applied
+    if needed == 0 {
+      collapseSlack[page] = nil
+    } else {
+      collapseSlack[page] = needed
+    }
+  }
+
+  private func applyCollapseSlackToAll() {
+    for (page, box) in pageScrollViews {
+      guard let sv = box.value else { continue }
+      applyCollapseSlack(to: sv, page: page)
+    }
   }
 
   private func isDescendant(_ view: UIView, ofPage page: Int) -> Bool {

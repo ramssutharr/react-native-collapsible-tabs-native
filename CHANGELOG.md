@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-08-31
+
+- New: `allowFullCollapse?: boolean` (default `false`). Tabs whose content is
+  too short to scroll — an empty state, a single row — can now collapse the
+  header anyway. Native hands such a page exactly the scroll range it lacks
+  (bottom `contentInset` on iOS, bottom padding on Android, which
+  `ReactScrollView.getMaxScrollY()` counts), so the header collapses on every
+  tab alike instead of popping back open when you switch to a short one.
+  Pages with enough content are untouched, the slack is re-measured whenever
+  the content, the viewport or the header height changes, and nothing moves
+  until the user scrolls.
+
 ## 0.2.1 — 2026-08-31
 
 - Fix: pull-to-refresh no longer arms when no `onRefresh` handler is

@@ -19,6 +19,7 @@
 - (void)setCollapseThreshold:(CGFloat)threshold;
 - (void)setSwipeEnabled:(BOOL)enabled;
 - (void)setCollapseMode:(NSString *)mode;
+- (void)setAllowFullCollapse:(BOOL)allow;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
@@ -224,6 +225,9 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.collapseMode != previousProps.collapseMode) {
     [_content setCollapseMode:[NSString stringWithUTF8String:newProps.collapseMode.c_str()]];
+  }
+  if (oldProps == nullptr || newProps.allowFullCollapse != previousProps.allowFullCollapse) {
+    [_content setAllowFullCollapse:newProps.allowFullCollapse];
   }
   // pageCount before selectedIndex: the selection is clamped to the page count.
   if (oldProps == nullptr || newProps.pageCount != previousProps.pageCount) {

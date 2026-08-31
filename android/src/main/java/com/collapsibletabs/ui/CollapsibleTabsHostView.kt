@@ -86,6 +86,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var selectedIndex = 0
     private var collapseThresholdPx = 0
     private var swipeEnabled = true
+    /** Give short pages the scroll range they lack (see [applyCollapseSlack]). */
+    private var allowFullCollapse = false
 
     private var pendingPageCount = -1
     private var pendingSelectedIndex = -1
@@ -154,6 +156,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val observed: MutableSet<View> =
         Collections.newSetFromMap(WeakHashMap<View, Boolean>())
+    /** Extra bottom padding this shell added per scroll view for
+     *  [allowFullCollapse] — tracked so the view's own padding is restored. */
+    private val collapseSlack = WeakHashMap<ReactScrollView, Int>()
 
     // MARK: - Props
 
@@ -162,7 +167,15 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         if (px == headerHeightPx) return
         headerHeightPx = px
         resyncOffsetToActive()
+        // The slack each page needs is measured against the header height.
+        applyCollapseSlackToAll()
         requestLayout()
+    }
+
+    fun setAllowFullCollapse(value: Boolean) {
+        if (value == allowFullCollapse) return
+        allowFullCollapse = value
+        applyCollapseSlackToAll()
     }
 
     fun setTabBarHeightDp(dp: Int) {
@@ -503,16 +516,66 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     private fun observe(page: Int, sv: ReactScrollView) {
         pageScrollViews.put(page, sv)
-        if (observed.add(sv)) sv.setOnScrollChangeListener(scrollChangeListener)
+        if (observed.add(sv)) {
+            sv.setOnScrollChangeListener(scrollChangeListener)
+            // The viewport height is half of the slack equation.
+            sv.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                applyCollapseSlack(sv)
+            }
+        }
         val content = sv.getChildAt(0)
         if (content != null && contentObserved.add(content)) {
             content.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                // Content grew or shrank: so did the slack it needs.
+                applyCollapseSlack(sv)
                 val p = pageIndexOf(sv) ?: return@addOnLayoutChangeListener
                 if (pendingSync.indexOfKey(p) >= 0) trySync(p)
             }
         }
+        applyCollapseSlack(sv)
         // Deliberately no trySync here: trySync → scrollViewOf → observe
         // would recurse. Callers that discover a view run the sync.
+    }
+
+    // MARK: - Full collapse on short pages
+
+    /**
+     * A page shorter than its viewport + the header has nothing to scroll, so
+     * the header can't be pushed away on that tab (and pops back open when you
+     * switch to it). Give it exactly the range it lacks as bottom padding:
+     * `ReactScrollView.getMaxScrollY()` is `contentHeight - (height -
+     * paddingTop - paddingBottom)`, so padding widens the scroll range that
+     * every scroll, fling and overscroll path already clamps against — no
+     * custom scrolling needed. `clipToPadding` must go off or the view would
+     * clip the bottom of its own viewport. Pages that already have the range
+     * get 0, and nothing moves until the user scrolls.
+     */
+    private fun applyCollapseSlack(sv: ReactScrollView) {
+        val applied = collapseSlack[sv] ?: 0
+        if (!allowFullCollapse) {
+            if (applied != 0) {
+                sv.setPadding(sv.paddingLeft, sv.paddingTop, sv.paddingRight, sv.paddingBottom - applied)
+                sv.clipToPadding = true
+                collapseSlack.remove(sv)
+            }
+            return
+        }
+        val content = sv.getChildAt(0) ?: return
+        if (sv.height <= 0 || content.height <= 0) return
+        // The page's own padding and range, with our slack discounted.
+        // Clamped: RN re-applying the view's own padding would leave our
+        // bookkeeping ahead of the real value.
+        val basePaddingBottom = maxOf(0, sv.paddingBottom - applied)
+        val natural = content.height - (sv.height - sv.paddingTop - basePaddingBottom)
+        val needed = (headerHeightPx - maxOf(0, natural)).coerceAtLeast(0)
+        if (needed == applied) return
+        sv.clipToPadding = needed == 0
+        sv.setPadding(sv.paddingLeft, sv.paddingTop, sv.paddingRight, basePaddingBottom + needed)
+        if (needed == 0) collapseSlack.remove(sv) else collapseSlack[sv] = needed
+    }
+
+    private fun applyCollapseSlackToAll() {
+        pageScrollViews.forEach { _, sv -> applyCollapseSlack(sv) }
     }
 
     private fun trySync(page: Int) {
