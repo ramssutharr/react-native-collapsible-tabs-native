@@ -20,6 +20,7 @@
 - (void)setSwipeEnabled:(BOOL)enabled;
 - (void)setCollapseMode:(NSString *)mode;
 - (void)setAllowFullCollapse:(BOOL)allow;
+- (void)setPageScrollEnabled:(BOOL)enabled;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
@@ -34,6 +35,7 @@
 @property (nonatomic, copy, nullable) UIScrollView *_Nullable (^scrollViewResolver)(UIView *pageRoot);
 @property (nonatomic, copy, nullable) void (^onPageSelected)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onPageRevealed)(NSInteger index);
+@property (nonatomic, copy, nullable) void (^onPageScroll)(NSInteger position, CGFloat offset);
 @property (nonatomic, copy, nullable) void (^onCollapsedChange)(BOOL collapsed);
 @property (nonatomic, copy, nullable) void (^onRefresh)(void);
 /// Cancels React's in-flight JS touches (so a Pressable under the finger does
@@ -77,6 +79,9 @@ using namespace facebook::react;
     };
     _content.onPageRevealed = ^(NSInteger index) {
       [weakSelf emitPageRevealed:index];
+    };
+    _content.onPageScroll = ^(NSInteger position, CGFloat offset) {
+      [weakSelf emitPageScroll:position offset:offset];
     };
     _content.onCollapsedChange = ^(BOOL collapsed) {
       [weakSelf emitCollapsedChange:collapsed];
@@ -197,6 +202,15 @@ using namespace facebook::react;
   emitter->onPageRevealed({.index = static_cast<int>(index)});
 }
 
+- (void)emitPageScroll:(NSInteger)position offset:(CGFloat)offset
+{
+  if (_eventEmitter == nullptr) {
+    return;
+  }
+  auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
+  emitter->onPageScroll({.position = static_cast<int>(position), .offset = static_cast<Float>(offset)});
+}
+
 - (void)emitCollapsedChange:(BOOL)collapsed
 {
   if (_eventEmitter == nullptr) {
@@ -251,6 +265,9 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.refreshing != previousProps.refreshing) {
     [_content setRefreshing:newProps.refreshing];
+  }
+  if (oldProps == nullptr || newProps.pageScrollEnabled != previousProps.pageScrollEnabled) {
+    [_content setPageScrollEnabled:newProps.pageScrollEnabled];
   }
   if (oldProps == nullptr || newProps.refreshEnabled != previousProps.refreshEnabled) {
     [_content setRefreshEnabled:newProps.refreshEnabled];

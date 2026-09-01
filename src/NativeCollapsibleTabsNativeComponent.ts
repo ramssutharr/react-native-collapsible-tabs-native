@@ -2,6 +2,7 @@ import type { HostComponent, ViewProps } from 'react-native';
 import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent';
 import type {
   DirectEventHandler,
+  Float,
   Int32,
   WithDefault,
 } from 'react-native/Libraries/Types/CodegenTypes';
@@ -40,6 +41,13 @@ type CollapsedChangeEvent = Readonly<{
 
 type PageRevealedEvent = Readonly<{
   index: Int32;
+}>;
+
+type PageScrollEvent = Readonly<{
+  /** Left-hand page of the two currently on screen. */
+  position: Int32;
+  /** 0..1 — how far the swipe has travelled from `position` to the next page. */
+  offset: Float;
 }>;
 
 type RefreshEvent = Readonly<{}>;
@@ -82,6 +90,12 @@ export interface NativeProps extends ViewProps {
    * spinner.
    */
   refreshEnabled?: WithDefault<boolean, true>;
+  /**
+   * Arms `onPageScroll`. That event is the one thing here that fires per
+   * frame, so it is emitted only when something is listening — the JS side
+   * derives this from the presence of a handler.
+   */
+  pageScrollEnabled?: WithDefault<boolean, false>;
 
   onPageSelected?: DirectEventHandler<PageSelectedEvent>;
   /**
@@ -91,6 +105,13 @@ export interface NativeProps extends ViewProps {
    * once per page (native dedupes), so this costs no per-frame JS work.
    */
   onPageRevealed?: DirectEventHandler<PageRevealedEvent>;
+  /**
+   * The pager's live swipe position, per frame, while `pageScrollEnabled`.
+   * Intended for a Reanimated `useEvent` worklet so a tab indicator can track
+   * the finger without touching the JS thread; a plain JS handler works but
+   * costs a JS call per frame.
+   */
+  onPageScroll?: DirectEventHandler<PageScrollEvent>;
   onCollapsedChange?: DirectEventHandler<CollapsedChangeEvent>;
   onRefresh?: DirectEventHandler<RefreshEvent>;
 }

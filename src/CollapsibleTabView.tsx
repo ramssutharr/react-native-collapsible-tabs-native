@@ -2,6 +2,7 @@ import React, { useMemo, type ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { CollapsibleTabsShell } from './CollapsibleTabsShell';
+import type { PageScrollHandler } from './pageScroll';
 import { TabBar, type TabBarProps } from './TabBar';
 import type { Route } from './types';
 
@@ -51,6 +52,21 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
    * with enough content are untouched.
    */
   allowFullCollapse?: boolean;
+  /**
+   * The pager's live swipe position, for a tab indicator that tracks the
+   * finger. Pass a Reanimated `useEvent` handler and the position is read on
+   * the UI thread — no per-frame JS. A plain function also works but runs on
+   * the JS thread every frame. Emitted only while a handler is set.
+   *
+   * ```tsx
+   * const progress = useSharedValue(0);
+   * const onPageScroll = useEvent(e => {
+   *   'worklet';
+   *   progress.value = e.position + e.offset;
+   * }, ['topPageScroll']);
+   * ```
+   */
+  onPageScroll?: PageScrollHandler;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -77,6 +93,7 @@ export function CollapsibleTabView<T extends Route = Route>({
   onCollapsedChange,
   collapseMode = 'classic',
   allowFullCollapse = false,
+  onPageScroll,
   style,
 }: CollapsibleTabViewProps<T>) {
   const { index, routes } = navigationState;
@@ -101,6 +118,7 @@ export function CollapsibleTabView<T extends Route = Route>({
       collapseMode={collapseMode}
       swipeEnabled={swipeEnabled}
       allowFullCollapse={allowFullCollapse}
+      onPageScroll={onPageScroll}
       refreshing={refreshing}
       onRefresh={onRefresh}
       lazy={lazy}

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import NativeCollapsibleTabs from './NativeCollapsibleTabsNativeComponent';
+import { resolveHost, type PageScrollHandler } from './pageScroll';
 import { CollapsibleTabsContext, type CollapsibleTabsContextValue } from './context';
 
 export const SHELL_HEADER_ID = 'tabs-header';
@@ -39,6 +40,8 @@ export type CollapsibleTabsShellProps = {
   allowFullCollapse?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** See CollapsibleTabView's `onPageScroll`. */
+  onPageScroll?: PageScrollHandler;
   /**
    * Mount a page's content only once its tab has been visited (the wrapper
    * view is always mounted so the native pager has a stable child per tab).
@@ -67,6 +70,7 @@ export function CollapsibleTabsShell({
   allowFullCollapse = false,
   refreshing = false,
   onRefresh,
+  onPageScroll,
   lazy = true,
   style,
 }: CollapsibleTabsShellProps) {
@@ -140,9 +144,15 @@ export function CollapsibleTabsShell({
     [headerHeight, tabBarHeight, index],
   );
 
+  // A Reanimated `useEvent` handler only reaches the view through a component
+  // Reanimated itself created, so the host is swapped for a wrapped one when
+  // (and only when) such a handler is passed. Reanimated stays an optional
+  // peer: plain function handlers, and no handler at all, use the plain host.
+  const Host = resolveHost(NativeCollapsibleTabs, onPageScroll);
+
   return (
     <CollapsibleTabsContext.Provider value={contextValue}>
-      <NativeCollapsibleTabs
+      <Host
         style={[styles.host, style]}
         headerHeight={headerHeight}
         tabBarHeight={tabBarHeight}
@@ -154,6 +164,8 @@ export function CollapsibleTabsShell({
         allowFullCollapse={allowFullCollapse}
         refreshing={refreshing}
         refreshEnabled={onRefresh != null}
+        pageScrollEnabled={onPageScroll != null}
+        onPageScroll={onPageScroll}
         onPageSelected={handlePageSelected}
         onPageRevealed={handlePageRevealed}
         onCollapsedChange={handleCollapsedChange}
@@ -180,7 +192,7 @@ export function CollapsibleTabsShell({
             {!lazy || visited.has(i) ? page : null}
           </View>
         ))}
-      </NativeCollapsibleTabs>
+      </Host>
     </CollapsibleTabsContext.Provider>
   );
 }

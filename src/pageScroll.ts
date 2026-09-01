@@ -1,0 +1,64 @@
+import type { ComponentType } from 'react';
+
+/**
+ * A handler for the shell's per-frame `onPageScroll`.
+ *
+ * Two shapes are accepted:
+ *
+ *   - a Reanimated `useEvent` handler (an object, not a function) — the swipe
+ *     position is then read on the UI thread and the JS thread does no
+ *     per-frame work. This is the intended way to drive a tab indicator that
+ *     tracks the finger.
+ *   - a plain function — simple, but it runs on the JS thread once per frame
+ *     of the swipe, which is exactly the cost this library exists to avoid.
+ *     Fine for coarse work; not for animation.
+ *
+ * RN `Animated.event` with `useNativeDriver: true` is deliberately NOT
+ * supported: on Fabric, native-driven animated events only reach the animated
+ * module through a deprecated back-channel that React Native itself special
+ * cases for ScrollView and has marked for removal.
+ */
+export type PageScrollHandler =
+  | ((event: { nativeEvent: { position: number; offset: number } }) => void)
+  | object;
+
+type AnyComponent = ComponentType<any>;
+
+let cachedPlain: AnyComponent | null = null;
+let cachedAnimated: AnyComponent | null | false = null;
+
+/**
+ * Reanimated worklet handlers are only delivered to components Reanimated
+ * wrapped itself, so the host is wrapped lazily — and only if a worklet
+ * handler is actually in use, so Reanimated remains an optional peer and is
+ * never required (or even imported) by consumers that don't interpolate.
+ */
+export function resolveHost(
+  host: AnyComponent,
+  handler: PageScrollHandler | undefined,
+): AnyComponent {
+  // Reanimated's `useEvent` is TYPED as returning a function but returns an
+  // object carrying `workletEventHandler`; accept either shape, and treat a
+  // genuine plain function as a JS-thread callback needing no wrapper.
+  const isWorklet =
+    handler != null &&
+    (typeof handler !== 'function' || 'workletEventHandler' in (handler as object));
+  if (!isWorklet) {
+    return host;
+  }
+  if (cachedAnimated !== null && cachedPlain === host) {
+    return cachedAnimated === false ? host : cachedAnimated;
+  }
+  cachedPlain = host;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const reanimated = require('react-native-reanimated');
+    const create = reanimated?.default?.createAnimatedComponent ?? reanimated?.createAnimatedComponent;
+    cachedAnimated = typeof create === 'function' ? (create(host) as AnyComponent) : false;
+  } catch {
+    // Reanimated is not installed — a worklet handler cannot work here, but
+    // the shell must still render.
+    cachedAnimated = false;
+  }
+  return cachedAnimated === false ? host : cachedAnimated;
+}

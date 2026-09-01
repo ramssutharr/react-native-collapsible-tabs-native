@@ -31,6 +31,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   @objc public var onPageSelected: ((Int) -> Void)?
   /// A page showed any part of itself for the first time (see `revealPage`).
   @objc public var onPageRevealed: ((Int) -> Void)?
+  /// Live swipe position, per frame, while `pageScrollEnabled`.
+  @objc public var onPageScroll: ((Int, CGFloat) -> Void)?
   @objc public var onCollapsedChange: ((Bool) -> Void)?
   @objc public var onRefresh: (() -> Void)?
   /// Provided by the host: cancels React's in-flight JS touches so a press
@@ -62,6 +64,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// Give short pages the scroll range they lack so the header can always be
   /// collapsed (see `applyCollapseSlack`).
   private var allowFullCollapse = false
+  /// Arms the per-frame `onPageScroll`; off unless something is listening.
+  private var pageScrollEnabled = false
 
   // MARK: - State
 
@@ -151,6 +155,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     resyncOffsetToActive()
     // The slack each page needs is measured against the header height.
     applyCollapseSlackToAll()
+  }
+
+  @objc public func setPageScrollEnabled(_ value: Bool) {
+    pageScrollEnabled = value
   }
 
   @objc public func setAllowFullCollapse(_ value: Bool) {
@@ -331,7 +339,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     let hit = super.hitTest(point, with: event)
     // Only an already-resolved scroll view: hit-testing runs constantly, and
     // discovery walks the page's view tree.
-    guard allowFullCollapse, let sv = pageScrollViews[activeIndex]?.value else { return hit }
+    guard let sv = pageScrollViews[activeIndex]?.value else { return hit }
+    // RN owns this prop too, so re-assert it as the finger lands.
+    sv.isDirectionalLockEnabled = true
+    guard allowFullCollapse else { return hit }
     applyCollapseSlack(to: sv, page: activeIndex)
     // RN's scroll view hit-tests ONLY the subviews of its content container
     // and returns its own wrapper for everything else — and that wrapper is
@@ -475,6 +486,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     collapseSlack[page] = nil
     guard let root = pageChildren[page], let found = scrollViewResolver?(root) else { return nil }
     pageScrollViews[page] = WeakBox(found)
+    // Lock a page's list to one axis per drag. A page lives inside a
+    // horizontal pager, and every real horizontal swipe carries some vertical
+    // drift; without this the list scrolls along with the page turn. It
+    // matters now in a way it did not before: allowFullCollapse gives short
+    // pages real vertical range, and blank-area touches are routed to the
+    // scroll view, so the vertical axis is live where it used to be inert.
+    found.isDirectionalLockEnabled = true
     if contentSizeObservers[page] == nil {
       contentSizeObservers[page] = found.observe(\.contentSize, options: [.new]) { [weak self] sv, _ in
         guard let self else { return }
@@ -724,6 +742,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // what made a freshly opened tab paint at the wrong offset first.
     revealPage(position)
     if peeking { revealPage(position + 1) }
+    // The one per-frame event in this component, and only when something is
+    // listening: a tab indicator that tracks the finger needs the position
+    // every frame, but nothing else here does.
+    if pageScrollEnabled {
+      let fraction = pager.contentOffset.x / w - CGFloat(position)
+      onPageScroll?(position, min(max(fraction, 0), 1))
+    }
   }
 
   /// Emitted once per page: JS only needs to learn that a page should mount.

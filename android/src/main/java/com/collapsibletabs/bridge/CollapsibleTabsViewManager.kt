@@ -43,6 +43,9 @@ class CollapsibleTabsViewManager(
         view.onPageRevealed = { index ->
             dispatcher()?.dispatchEvent(TabsPageRevealedEvent(surfaceId(), view.id, index))
         }
+        view.onPageScroll = { position, offset ->
+            dispatcher()?.dispatchEvent(TabsPageScrollEvent(surfaceId(), view.id, position, offset))
+        }
         view.onCollapsedChange = { collapsed ->
             dispatcher()?.dispatchEvent(
                 TabsCollapsedChangeEvent(surfaceId(), view.id, collapsed),
@@ -62,6 +65,7 @@ class CollapsibleTabsViewManager(
         mutableMapOf(
             TabsPageSelectedEvent.NAME to mapOf("registrationName" to "onPageSelected"),
             TabsPageRevealedEvent.NAME to mapOf("registrationName" to "onPageRevealed"),
+            TabsPageScrollEvent.NAME to mapOf("registrationName" to "onPageScroll"),
             TabsCollapsedChangeEvent.NAME to mapOf("registrationName" to "onCollapsedChange"),
             TabsRefreshEvent.NAME to mapOf("registrationName" to "onRefresh"),
         )
@@ -106,6 +110,11 @@ class CollapsibleTabsViewManager(
     @ReactProp(name = "allowFullCollapse")
     override fun setAllowFullCollapse(view: CollapsibleTabsHostView, value: Boolean) {
         view.setAllowFullCollapse(value)
+    }
+
+    @ReactProp(name = "pageScrollEnabled")
+    override fun setPageScrollEnabled(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setPageScrollEnabled(value)
     }
 
     @ReactProp(name = "refreshing")

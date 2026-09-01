@@ -1,7 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-01
 
+- New: `onPageScroll` — the pager's live swipe position (`position` + a 0..1
+  `offset`), so a custom tab bar can interpolate its indicator with the
+  finger instead of snapping when the swipe settles. It is the one per-frame
+  event here and is emitted only while a handler is attached, so nothing else
+  pays for it. Intended for a Reanimated `useEvent` worklet (UI thread, no
+  per-frame JS); Reanimated stays an OPTIONAL peer and is only required, or
+  even imported, if you pass a worklet handler. RN `Animated.event` with
+  `useNativeDriver` is documented as unsupported: on Fabric such events only
+  reach the animated module through a deprecated back-channel React Native
+  special-cases for its own ScrollView and has marked for removal.
+- Fix: a page's list is locked to one axis per drag
+  (`isDirectionalLockEnabled`). Every real horizontal swipe carries some
+  vertical drift, and the list scrolled along with the page turn. It surfaced
+  now because two earlier fixes opened the vertical axis where it used to be
+  inert: `allowFullCollapse` gives short pages real range, and blank-area
+  touches are routed to the scroll view.
 - New: pages mount **on peek**. Native announces a page the instant any sliver
   of it is on screen (`onPageRevealed`, emitted once per page, so no per-frame
   JS), and the shell mounts it then — so a lazy tab mounts and is aligned to

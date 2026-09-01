@@ -55,6 +55,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     var onPageSelected: ((index: Int) -> Unit)? = null
     /** A page showed any part of itself for the first time (see [revealPage]). */
     var onPageRevealed: ((index: Int) -> Unit)? = null
+    /** Live swipe position, per frame, while [pageScrollEnabled]. */
+    var onPageScroll: ((position: Int, offset: Float) -> Unit)? = null
     var onCollapsedChange: ((collapsed: Boolean) -> Unit)? = null
     var onRefresh: (() -> Unit)? = null
 
@@ -90,6 +92,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var swipeEnabled = true
     /** Give short pages the scroll range they lack (see [applyCollapseSlack]). */
     private var allowFullCollapse = false
+    /** Arms the per-frame [onPageScroll]; off unless something is listening. */
+    private var pageScrollEnabled = false
 
     private var pendingPageCount = -1
     private var pendingSelectedIndex = -1
@@ -189,6 +193,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         // The slack each page needs is measured against the header height.
         applyCollapseSlackToAll()
         requestLayout()
+    }
+
+    fun setPageScrollEnabled(value: Boolean) {
+        pageScrollEnabled = value
     }
 
     fun setAllowFullCollapse(value: Boolean) {
@@ -423,6 +431,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             // wrong offset first.
             revealPage(position)
             if (positionOffsetPixels > 0) revealPage(position + 1)
+            // The one per-frame event here, and only when something is
+            // listening: a tab indicator that tracks the finger needs the
+            // position every frame, but nothing else does.
+            if (pageScrollEnabled) onPageScroll?.invoke(position, positionOffset)
         }
 
         override fun onPageScrollStateChanged(state: Int) {

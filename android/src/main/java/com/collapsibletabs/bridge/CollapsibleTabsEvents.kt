@@ -36,6 +36,28 @@ class TabsPageRevealedEvent(
     companion object { const val NAME = "topPageRevealed" }
 }
 
+/**
+ * The pager's live swipe position. This is the ONE per-frame event here, and
+ * it is emitted only while `pageScrollEnabled` — i.e. only when something is
+ * listening — so a tab indicator can track the finger and nothing else pays
+ * for it.
+ */
+class TabsPageScrollEvent(
+    surfaceId: Int,
+    viewTag: Int,
+    private val position: Int,
+    private val offset: Float,
+) : Event<TabsPageScrollEvent>(surfaceId, viewTag) {
+    override fun getEventName(): String = NAME
+    override fun canCoalesce(): Boolean = true
+    override fun getEventData(): WritableMap = Arguments.createMap().apply {
+        putInt("position", position)
+        putDouble("offset", offset.toDouble())
+    }
+
+    companion object { const val NAME = "topPageScroll" }
+}
+
 /** The user pulled to refresh from the top of the container. */
 class TabsRefreshEvent(surfaceId: Int, viewTag: Int) :
     Event<TabsRefreshEvent>(surfaceId, viewTag) {
