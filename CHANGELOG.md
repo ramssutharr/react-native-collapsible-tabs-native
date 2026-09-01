@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 — 2026-09-01
+
+- Fix (iOS): a horizontal list inside the header — a date picker, a chip row —
+  no longer fights the header's own drag. The band pan used to begin for ANY
+  touch on the header and recognises simultaneously with that list, so one
+  drag scrolled the list AND drove the page. It now hit-tests for a
+  horizontally scrollable view under the finger, as Android already did, and
+  arbitrates by direction: sideways belongs to the list, vertical to the page,
+  so the list is not a dead zone for scrolling either.
+- Fix (iOS): a vertical drag starting on such a list no longer slides it
+  sideways. Its scrolling is suspended for the duration of that gesture —
+  `isDirectionalLockEnabled` is not enough, since it only arbitrates on a
+  scroll view that can scroll both ways, and these strips are horizontal-only.
+
 ## 0.5.0 — 2026-09-01
 
 - New: `pinTabBar` (default `true`). Pass `false` and the tab-bar band
