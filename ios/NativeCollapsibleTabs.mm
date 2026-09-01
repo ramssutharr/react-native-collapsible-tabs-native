@@ -21,6 +21,7 @@
 - (void)setCollapseMode:(NSString *)mode;
 - (void)setAllowFullCollapse:(BOOL)allow;
 - (void)setPageScrollEnabled:(BOOL)enabled;
+- (void)setPinTabBar:(BOOL)pinned;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
@@ -265,6 +266,9 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.refreshing != previousProps.refreshing) {
     [_content setRefreshing:newProps.refreshing];
+  }
+  if (oldProps == nullptr || newProps.pinTabBar != previousProps.pinTabBar) {
+    [_content setPinTabBar:newProps.pinTabBar];
   }
   if (oldProps == nullptr || newProps.pageScrollEnabled != previousProps.pageScrollEnabled) {
     [_content setPageScrollEnabled:newProps.pageScrollEnabled];

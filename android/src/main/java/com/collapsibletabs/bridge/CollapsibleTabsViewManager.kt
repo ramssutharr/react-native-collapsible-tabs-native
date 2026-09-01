@@ -112,6 +112,11 @@ class CollapsibleTabsViewManager(
         view.setAllowFullCollapse(value)
     }
 
+    @ReactProp(name = "pinTabBar")
+    override fun setPinTabBar(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setPinTabBar(value)
+    }
+
     @ReactProp(name = "pageScrollEnabled")
     override fun setPageScrollEnabled(view: CollapsibleTabsHostView, value: Boolean) {
         view.setPageScrollEnabled(value)

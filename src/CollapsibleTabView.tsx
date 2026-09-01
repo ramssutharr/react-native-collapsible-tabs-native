@@ -45,12 +45,25 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
   collapseMode?: 'classic' | 'direction';
   /**
    * Let tabs whose content is too short scroll the header away anyway
-   * (default false). Without it a near-empty tab has nothing to scroll, so
-   * the header stays open there and pops back when you switch to it. With it,
-   * native hands such a page exactly the scroll range it lacks — so an empty
-   * state can be pushed up and the header collapses on every tab alike. Tabs
-   * with enough content are untouched.
+   * (default TRUE). Without it a near-empty tab has nothing to scroll, so the
+   * header stays open there, pops back when you switch to it, and drags in the
+   * blank area below the content do nothing — which reads as a broken screen.
+   * With it, native hands such a page exactly the scroll range it lacks, so an
+   * empty state can be pushed up and the header collapses on every tab alike.
+   * Tabs with enough content are untouched. Pass `false` for the old
+   * behaviour, where the header eases back to whatever a short tab can hold.
    */
+  /**
+   * Whether the tab strip stays pinned at the top once the header is gone
+   * (default true). Pass `false` and it collapses as part of the header — the
+   * whole band, tabs included, scrolls away together.
+   *
+   * Prefer this over rendering tabs INSIDE `renderHeader`: pages clear the tab
+   * bar's height either way, so the shell has somewhere to put the band back
+   * without landing on your content — which matters in
+   * `collapseMode="direction"`, where the bands return on any up-scroll.
+   */
+  pinTabBar?: boolean;
   allowFullCollapse?: boolean;
   /**
    * The pager's live swipe position, for a tab indicator that tracks the
@@ -88,11 +101,12 @@ export function CollapsibleTabView<T extends Route = Route>({
   onRefresh,
   refreshing = false,
   swipeEnabled = true,
+  pinTabBar = true,
   lazy = true,
   collapseThreshold = 0,
   onCollapsedChange,
   collapseMode = 'classic',
-  allowFullCollapse = false,
+  allowFullCollapse = true,
   onPageScroll,
   style,
 }: CollapsibleTabViewProps<T>) {
@@ -117,6 +131,7 @@ export function CollapsibleTabView<T extends Route = Route>({
       collapseThreshold={collapseThreshold}
       collapseMode={collapseMode}
       swipeEnabled={swipeEnabled}
+      pinTabBar={pinTabBar}
       allowFullCollapse={allowFullCollapse}
       onPageScroll={onPageScroll}
       refreshing={refreshing}

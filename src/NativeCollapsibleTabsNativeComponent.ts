@@ -75,13 +75,20 @@ export interface NativeProps extends ViewProps {
   collapseMode?: WithDefault<string, 'classic'>;
   swipeEnabled?: WithDefault<boolean, true>;
   /**
+   * Whether the tab-bar band stays pinned at the top once the header is gone
+   * (default true). Pass false and it collapses as part of the header — the
+   * whole band, tabs included, scrolls away together — while pages still clear
+   * it, which a tab strip rendered INSIDE the header cannot offer.
+   */
+  pinTabBar?: WithDefault<boolean, true>;
+  /**
    * Let a page whose content is too short to scroll the header away collapse
    * it anyway. Native gives that page exactly the missing scroll range (a
    * bottom `contentInset` on iOS, bottom padding on Android — RN's own
    * `getMaxScrollY()` counts it), so an empty or one-item tab behaves like a
    * full one. Pages that can already hold the header get nothing.
    */
-  allowFullCollapse?: WithDefault<boolean, false>;
+  allowFullCollapse?: WithDefault<boolean, true>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
   refreshing?: WithDefault<boolean, false>;
   /**

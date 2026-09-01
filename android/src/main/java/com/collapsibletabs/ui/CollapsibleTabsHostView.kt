@@ -90,15 +90,26 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var selectedIndex = 0
     private var collapseThresholdPx = 0
     private var swipeEnabled = true
-    /** Give short pages the scroll range they lack (see [applyCollapseSlack]). */
-    private var allowFullCollapse = false
+    /** False: the tab-bar band collapses with the header instead of pinning. */
+    private var pinTabBar = true
+    /** Give short pages the scroll range they lack (see [applyCollapseSlack]).
+     *  On by default: a tab you cannot scroll is a tab whose header you cannot
+     *  collapse, which reads as broken. */
+    private var allowFullCollapse = true
     /** Arms the per-frame [onPageScroll]; off unless something is listening. */
     private var pageScrollEnabled = false
 
     private var pendingPageCount = -1
     private var pendingSelectedIndex = -1
 
-    /** Current header offset, 0..headerHeightPx. */
+    /**
+     * How far the bands travel before they are gone. The tab bar is part of
+     * that distance only when it is not pinned.
+     */
+    private val collapsibleHeightPx: Int
+        get() = headerHeightPx + (if (pinTabBar) 0 else tabBarHeightPx)
+
+    /** Current header offset, 0..collapsibleHeightPx. */
     private var headerOffset = 0
     /** 'direction' collapse mode: offset follows the scroll DELTA. */
     private var directionMode = false
@@ -195,6 +206,14 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         requestLayout()
     }
 
+    fun setPinTabBar(value: Boolean) {
+        if (value == pinTabBar) return
+        pinTabBar = value
+        resyncOffsetToActive()
+        applyCollapseSlackToAll()
+        requestLayout()
+    }
+
     fun setPageScrollEnabled(value: Boolean) {
         pageScrollEnabled = value
     }
@@ -222,7 +241,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private fun resyncOffsetToActive() {
         val sv = activeScrollView()
         if (sv == null) {
-            applyHeaderOffset(headerOffset.coerceIn(0, headerHeightPx), animated = false)
+            applyHeaderOffset(headerOffset.coerceIn(0, collapsibleHeightPx), animated = false)
             return
         }
         val y = sv.scrollY
@@ -230,9 +249,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         val target = if (directionMode) {
             // Keep the delta-driven offset, but hold both invariants:
             // 0 <= offset <= min(y, headerHeightPx).
-            minOf(headerOffset, headerHeightPx, maxOf(y, 0))
+            minOf(headerOffset, collapsibleHeightPx, maxOf(y, 0))
         } else {
-            y.coerceIn(0, headerHeightPx)
+            y.coerceIn(0, collapsibleHeightPx)
         }
         applyHeaderOffset(target, animated = false)
     }
@@ -399,6 +418,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             pageSlots.forEach { key, value -> if (value === slot && key != position) stale = key }
             if (stale >= 0) pageSlots.remove(stale)
             pageSlots.put(position, slot)
+            slot.translationY = 0f
             // A recycled slot carries the previous page's alpha.
             slot.alpha = if (pendingSync.indexOfKey(position) >= 0) 0f else 1f
             val child = pageChildren.get(position)
@@ -535,9 +555,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                 // never leaves a gap under the tab bar.
                 val dy = scrollY - lastActiveScrollY
                 if (scrollY <= 0) 0
-                else (headerOffset + dy).coerceIn(0, headerHeightPx)
+                else (headerOffset + dy).coerceIn(0, collapsibleHeightPx)
             } else {
-                scrollY.coerceIn(0, headerHeightPx)
+                scrollY.coerceIn(0, collapsibleHeightPx)
             }
             lastActiveScrollY = scrollY
             // While the active page is still catching up to the header
@@ -570,7 +590,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             observe(page, sv)
             if (pendingSync.indexOfKey(page) >= 0) trySync(page)
             if (page == activeIndex && pendingSync.indexOfKey(page) < 0) {
-                applyHeaderOffset(sv.scrollY.coerceIn(0, headerHeightPx), animated = false)
+                applyHeaderOffset(sv.scrollY.coerceIn(0, collapsibleHeightPx), animated = false)
             }
         }
 
@@ -642,13 +662,24 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         val content = sv.getChildAt(0) ?: return
         if (sv.height <= 0) return
         val applied = collapseSlack[sv] ?: 0
+        // Nothing to do, and nothing of ours to undo: never touch a page whose
+        // screen does not use allowFullCollapse. This view re-lays the content
+        // out, and doing that to a page we were never asked to extend can pin
+        // it to a stale height and cost it its scroll range entirely.
+        if (!allowFullCollapse && applied == 0) return
         // The content's own height, i.e. without the extension we gave it.
         // Fabric is the only thing that lays this view out (ReactScrollView
         // does not call super.onLayout), so the layout listener records the
         // height Fabric last set and every extension is measured from that.
-        val natural = naturalContentHeight[content] ?: (content.height - applied)
+        // With nothing applied the current height IS the natural one — trusting
+        // it directly means a stale record can never outlive our own extension
+        // (a list that remounts, say, gets a fresh content view whose recorded
+        // height would otherwise never be refreshed).
+        val natural =
+            if (applied == 0) content.height
+            else naturalContentHeight[content] ?: (content.height - applied)
         val room = natural - sv.height
-        val needed = if (allowFullCollapse) (headerHeightPx - room).coerceAtLeast(0) else 0
+        val needed = if (allowFullCollapse) (collapsibleHeightPx - room).coerceAtLeast(0) else 0
         if (needed == applied && content.height == natural + needed) return
         // Extend the CONTENT, not the ScrollView's padding: ScrollView refuses
         // to even begin a drag while `scrollY == 0 && !canScrollVertically(1)`,
@@ -838,8 +869,11 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         // (never scrolled back up to match). Classic: exact match below the
         // full-collapse point.
         val desired = when {
-            directionMode -> maxOf(sv.scrollY, headerOffset)
-            headerOffset >= headerHeightPx -> maxOf(sv.scrollY, headerHeightPx)
+            // Align to the header, do NOT keep a deeper scroll: the bands sit
+            // at `offset`, so a page left scrolled past that shows its content
+            // behind them — what returning to a scrolled tab looked like.
+            directionMode -> headerOffset
+            headerOffset >= collapsibleHeightPx -> maxOf(sv.scrollY, collapsibleHeightPx)
             else -> headerOffset
         }
         if (sv.scrollY != desired) sv.scrollTo(0, desired)
@@ -855,21 +889,30 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private fun reconcileHeaderToActive() {
         val sv = activeScrollView()
         if (sv == null) {
+            // No page to measure yet: anchor the delta to the header itself, so
+            // the first scroll that arrives is a delta of zero rather than the
+            // distance from whatever the PREVIOUS tab was scrolled to.
+            lastActiveScrollY = headerOffset
             // Content not mounted yet: hold the header and catch the page up
             // when it arrives instead of snapping the header open.
             if (headerOffset > 0) setPendingSync(activeIndex, headerOffset)
             return
         }
+        // Re-anchor BEFORE the early return below. In 'direction' mode the
+        // header follows the scroll DELTA, so a stale anchor from the tab you
+        // just left turns the first scroll event on this tab into a large
+        // phantom delta — revealing the header on top of content that is
+        // already at the top.
+        lastActiveScrollY = sv.scrollY
         if (pendingSync.indexOfKey(activeIndex) >= 0) {
             trySync(activeIndex)
             if (pendingSync.indexOfKey(activeIndex) >= 0) return
         }
-        lastActiveScrollY = sv.scrollY
         val target = if (directionMode) {
             // Only concede when the page cannot hold the current offset.
-            if (sv.scrollY < headerOffset) sv.scrollY.coerceIn(0, headerHeightPx) else headerOffset
+            if (sv.scrollY < headerOffset) sv.scrollY.coerceIn(0, collapsibleHeightPx) else headerOffset
         } else {
-            sv.scrollY.coerceIn(0, headerHeightPx)
+            sv.scrollY.coerceIn(0, collapsibleHeightPx)
         }
         if (target != headerOffset) applyHeaderOffset(target, animated = isLaidOut)
     }

@@ -46,9 +46,9 @@ path instead of trying to keep up with it.
 - Optional per-frame swipe position (`onPageScroll`) so a custom tab bar can
   interpolate its indicator with the finger — on the UI thread via a
   Reanimated worklet, so the JS thread still does nothing per frame.
-- Optional `allowFullCollapse`: tabs with little or no content (an empty
-  state, one row) still scroll the header away, because native gives those
-  pages exactly the scroll range they lack.
+- Tabs with little or no content (an empty state, one row) still scroll the
+  header away, because native gives those pages exactly the scroll range they
+  lack (`allowFullCollapse`, on by default).
 - Container-level pull-to-refresh (`refreshing` / `onRefresh`): the scroll
   view bounce on iOS, `SwipeRefreshLayout` on Android.
 - `onCollapsedChange` fires once per threshold crossing (not per frame) — use
@@ -83,10 +83,12 @@ roadmap fine print:
   neither page nor scroll). Swipe on the content or use the tab strip. The
   tab-bar band scrolls its own content horizontally if you render one that
   does.
-- By default, a tab whose content is too short to hold the current collapse
-  offset eases the header back to the offset that tab can hold once the
-  switch settles (Twitter-style). Set `allowFullCollapse` to give short pages
-  the missing scroll range instead, so every tab collapses alike.
+- A tab whose content is too short is given the scroll range it lacks, so it
+  collapses like any other (`allowFullCollapse`, on by default). Set it to
+  `false` for the Twitter-style alternative, where the header instead eases
+  back to whatever offset that tab can hold — but note that a page with no
+  scroll range at all cannot be scrolled or collapsed, and drags in the blank
+  area below its content do nothing.
 - Pull-to-refresh thresholds are fixed (≈70 pt pull, 60 pt spinner band on
   iOS; platform defaults on Android) and the spinner is not customisable yet.
 - Pages stay mounted once visited (`lazy` only defers the first mount). A
@@ -181,7 +183,7 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
-| `allowFullCollapse` | `boolean` | default `false`. Let tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks (bottom inset / padding); tabs with enough content are untouched |
+| `allowFullCollapse` | `boolean` | default **`true`**. Tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks; tabs with enough content are untouched. `false` restores the old behaviour |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
 | `onPageScroll` | Reanimated `useEvent` handler, or `(e) => void` | the pager's live swipe position, for a tab indicator that tracks the finger. Emitted only while a handler is set. A worklet reads it on the UI thread; a plain function costs a JS call per frame |
 | `swipeEnabled` | `boolean` | default `true` |

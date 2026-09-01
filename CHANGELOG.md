@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.5.0 — 2026-09-01
+
+- New: `pinTabBar` (default `true`). Pass `false` and the tab-bar band
+  collapses as part of the header — the whole band, tabs included, scrolls
+  away together. Prefer it over rendering a tab strip INSIDE `renderHeader`:
+  pages clear the band's height either way, so the shell has somewhere to put
+  it back without landing on content. With an empty band there is no
+  clearance at all, which `collapseMode="direction"` exposes immediately
+  (the bands return on any up-scroll).
+- Fix: switching tabs in `direction` mode now aligns the incoming page to the
+  header offset instead of keeping a deeper scroll. A page left scrolled past
+  the offset shows its content BEHIND the bands — returning to a tab you had
+  scrolled put its first card under the header.
+- Fix (iOS): the extra bottom inset is now tracked per SCROLL VIEW rather than
+  per page. Fabric recycles scroll views — one instance serves different pages
+  over time — so a page-keyed record drifts from the inset actually on the
+  view: it kept an inset nobody believed they had applied, leaving the page
+  hundreds of points of range nobody accounted for and letting its content run
+  up under the header. (Android already keyed this by the view, which is why
+  it was unaffected.)
+- Fix (iOS): read `adjustedContentInset`, not `contentInset`. UIKit clamps the
+  content offset against the adjusted value, and RN's safe-area handling lives
+  in the difference — so every scroll figure was out by the safe area, always
+  in the direction of granting extra range.
+- Fix (iOS): a page's list can be REPLACED without the page remounting (a
+  grid/list toggle re-keys it). Nothing re-ran discovery, so the new scroll
+  view was never registered: its scrolls never reached the collapse engine and
+  it never got its range. It is now re-resolved on touch when the cached view
+  has gone. The contentSize observer is also invalidated with it — kept alive,
+  it blocked a replacement from ever being created.
+- Fix (iOS): the end-of-list bounce no longer reveals the header. A rubber-band
+  springback is a decreasing offset, indistinguishable in `direction` mode from
+  the user scrolling up; the position that drives the header is now held inside
+  the page's real range.
+- **Breaking-ish:** `allowFullCollapse` now defaults to `true`. A tab that
+  cannot scroll is a tab whose header cannot collapse, and whose blank area
+  swallows every drag — which reads as a broken screen rather than a
+  deliberate default. Pass `allowFullCollapse={false}` for the previous
+  behaviour (the header eases back to whatever a short tab can hold).
+- Fix (Android): with `allowFullCollapse` off, the slack pass still re-laid a
+  page's content view out, and could pin it to a stale recorded height —
+  costing that page its scroll range entirely. Worst on a screen whose list
+  remounts (a grid/list toggle), where the replacement content view was
+  measured once at discovery and never refreshed. It now returns immediately
+  for any page it was never asked to extend, and treats the current height as
+  natural whenever nothing of ours is applied.
+- Fix (iOS): guard against re-entering the slack pass. It mutates
+  `contentInset`, UIKit fires `scrollViewDidScroll` on inset changes, and the
+  clamp heal there calls straight back into it — a cycle with nothing to stop
+  it if a pass does not converge. The computed slack is also ceilinged at one
+  header plus one viewport so a disagreement settles instead of compounding.
+
 ## 0.4.0 — 2026-09-01
 
 - New: `onPageScroll` — the pager's live swipe position (`position` + a 0..1

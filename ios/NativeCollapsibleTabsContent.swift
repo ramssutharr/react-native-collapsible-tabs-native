@@ -61,9 +61,18 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var selectedIndex = 0
   private var collapseThreshold: CGFloat = 0
   private var swipeEnabled = true
+  /// False: the tab-bar band collapses with the header instead of pinning.
+  private var pinTabBar = true
+
+  /// How far the bands travel before they are gone. The tab bar is part of
+  /// that distance only when it is not pinned.
+  private var collapsibleHeight: CGFloat {
+    headerHeight + (pinTabBar ? 0 : tabBarHeight)
+  }
   /// Give short pages the scroll range they lack so the header can always be
-  /// collapsed (see `applyCollapseSlack`).
-  private var allowFullCollapse = false
+  /// collapsed (see `applyCollapseSlack`). On by default: a tab you cannot
+  /// scroll is a tab whose header you cannot collapse, which reads as broken.
+  private var allowFullCollapse = true
   /// Arms the per-frame `onPageScroll`; off unless something is listening.
   private var pageScrollEnabled = false
 
@@ -88,9 +97,35 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var pageScrollViews: [Int: WeakBox<UIScrollView>] = [:]
   /// Offsets a page still has to reach (lazy mount / growing content).
   private var pendingSync: [Int: CGFloat] = [:]
-  /// Extra bottom inset this shell added per page for `allowFullCollapse`.
-  /// Tracked so the page's own inset can be restored exactly.
-  private var collapseSlack: [Int: CGFloat] = [:]
+  /// Extra bottom inset this shell added for `allowFullCollapse`, keyed by the
+  /// SCROLL VIEW rather than by page.
+  ///
+  /// Fabric recycles scroll views: one instance serves different pages over
+  /// time, and a page's list can be replaced and later come back. Keyed by
+  /// page, the record and the inset drift apart — the view keeps an inset we
+  /// no longer believe we applied, so it is never taken back and the page ends
+  /// up with hundreds of points of range nobody accounts for. Keyed by the
+  /// view, the record follows the inset wherever the view goes (this is what
+  /// Android does with its WeakHashMap).
+  private let collapseSlack = NSMapTable<UIScrollView, NSNumber>.weakToStrongObjects()
+
+  private func appliedSlack(_ sv: UIScrollView) -> CGFloat {
+    CGFloat(collapseSlack.object(forKey: sv)?.doubleValue ?? 0)
+  }
+
+  private func setAppliedSlack(_ sv: UIScrollView, _ value: CGFloat) {
+    if value == 0 {
+      collapseSlack.removeObject(forKey: sv)
+    } else {
+      collapseSlack.setObject(NSNumber(value: Double(value)), forKey: sv)
+    }
+  }
+  /// True while this view is mutating a page's contentInset. UIKit fires
+  /// `scrollViewDidScroll` when an inset changes, which lands straight back in
+  /// the collapse engine — whose clamp heal calls the slack pass again. Left
+  /// unguarded that is an unbounded loop rather than a crash: the screen
+  /// simply stops responding.
+  private var applyingSlack = false
   private var contentSizeObservers: [Int: NSKeyValueObservation] = [:]
   private var giveUpWork: DispatchWorkItem?
   /// Give-up retries spent waiting for a page that is still mounting.
@@ -157,6 +192,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     applyCollapseSlackToAll()
   }
 
+  @objc public func setPinTabBar(_ value: Bool) {
+    guard value != pinTabBar else { return }
+    pinTabBar = value
+    resyncOffsetToActive()
+    applyCollapseSlackToAll()
+  }
+
   @objc public func setPageScrollEnabled(_ value: Bool) {
     pageScrollEnabled = value
   }
@@ -183,7 +225,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// offset from the active list's actual position instead.
   private func resyncOffsetToActive() {
     guard let sv = activeScrollView() else {
-      setHeaderOffsetNow(min(headerOffset, headerHeight))
+      setHeaderOffsetNow(min(headerOffset, collapsibleHeight))
       return
     }
     let y = adjustedY(of: sv)
@@ -191,9 +233,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if directionMode {
       // Keep the delta-driven offset, but hold both invariants:
       // 0 <= offset <= min(y, headerHeight).
-      setHeaderOffsetNow(min(headerOffset, headerHeight, max(y, 0)))
+      setHeaderOffsetNow(min(headerOffset, collapsibleHeight, max(y, 0)))
     } else {
-      setHeaderOffsetNow(min(max(y, 0), headerHeight))
+      setHeaderOffsetNow(min(max(y, 0), collapsibleHeight))
     }
   }
 
@@ -280,7 +322,6 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       pageScrollViews[page] = nil
       contentSizeObservers[page] = nil
       setPendingSync(page, nil)
-      collapseSlack[page] = nil
     }
     child.removeFromSuperview()
   }
@@ -296,8 +337,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     contentSizeObservers.removeAll()
     pendingSync.removeAll()
     revealedPages.removeAll()
+    collapseSlack.removeAllObjects()
     pageSlots.forEach { $0.alpha = 1 }
-    collapseSlack.removeAll()
     fling?.stop()
     fling = nil
     refreshing = false
@@ -339,7 +380,18 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     let hit = super.hitTest(point, with: event)
     // Only an already-resolved scroll view: hit-testing runs constantly, and
     // discovery walks the page's view tree.
-    guard let sv = pageScrollViews[activeIndex]?.value else { return hit }
+    // A page's list can be REPLACED without the page itself remounting — a
+    // grid/list toggle re-keys it — and nothing else here would notice. The
+    // new scroll view is not one we registered on, so its scrolls never reach
+    // the collapse engine and it never gets its range. Android hears about
+    // such a list through a global scroll listener; on iOS a touch is the
+    // earliest moment that matters, and re-resolving walks the page's tree
+    // only when the cache is genuinely stale.
+    let cached = pageScrollViews[activeIndex]?.value
+    if cached == nil || cached?.window == nil {
+      _ = activeScrollView()
+    }
+    guard let sv = pageScrollViews[activeIndex]?.value, sv.window != nil else { return hit }
     // RN owns this prop too, so re-assert it as the finger lands.
     sv.isDirectionalLockEnabled = true
     guard allowFullCollapse else { return hit }
@@ -361,7 +413,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     pager.frame = bounds
     pager.contentSize = CGSize(width: w * CGFloat(pageCount), height: h)
     for (i, slot) in pageSlots.enumerated() {
-      slot.frame = CGRect(x: CGFloat(i) * w, y: 0, width: w, height: h)
+      // bounds + center, never `frame`: a page slot can carry a reveal
+      // translation (see applyBandTransform), and assigning `frame` to a
+      // transformed view re-centres it so the TRANSFORMED rect matches —
+      // silently undoing the translation on every layout pass.
+      slot.bounds = CGRect(x: 0, y: 0, width: w, height: h)
+      slot.center = CGPoint(x: CGFloat(i) * w + w / 2, y: h / 2)
     }
     // bounds + center, never `frame`: the bands carry a translation
     // transform, and assigning `frame` to a transformed view re-centres it so
@@ -394,6 +451,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
   }
 
+
   // MARK: - Collapse engine
 
   /// Every observed scroll view reports here; only the active page drives.
@@ -403,7 +461,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     guard scrollView === activeScrollView() else { return }
-    var y = adjustedY(of: scrollView)
+    var y = clampedY(of: scrollView)
     // A scroll the page could not currently hold is a LAYOUT CLAMP, not the
     // user: when a page's content is re-laid out at its own height the extra
     // range allowFullCollapse gave it briefly disappears, and the offset is
@@ -413,9 +471,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if allowFullCollapse, y < headerOffset, maxOffset(of: scrollView) < headerOffset {
       applyCollapseSlack(to: scrollView, page: activeIndex)
       if maxOffset(of: scrollView) >= headerOffset {
-        let restored = headerOffset - scrollView.contentInset.top + refreshInsetApplied(to: scrollView)
+        let restored = headerOffset - scrollView.adjustedContentInset.top
+          + refreshInsetApplied(to: scrollView)
         scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: restored)
-        y = adjustedY(of: scrollView)
+        y = clampedY(of: scrollView)
       }
     }
     let target: CGFloat
@@ -426,20 +485,41 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       // offset <= y holds and the content never leaves a gap under the
       // tab bar.
       let dy = y - lastActiveY
-      target = y <= 0 ? 0 : min(max(headerOffset + dy, 0), headerHeight)
+      target = y <= 0 ? 0 : min(max(headerOffset + dy, 0), collapsibleHeight)
     } else {
-      target = min(max(y, 0), headerHeight)
+      target = min(max(y, 0), collapsibleHeight)
     }
     lastActiveY = y
     // While the active page is still catching up to the header (content
     // mounting), a clamped offset must not pop the header open.
     if pendingSync[activeIndex] != nil, target < headerOffset { return }
-    pull = max(0, -y)
+    pull = max(0, -adjustedY(of: scrollView))
     setHeaderOffsetNow(target)
   }
 
+  /// `adjustedY`, held inside the page's real scroll range.
+  ///
+  /// iOS rubber-bands past both ends, and a bounce at the BOTTOM springs the
+  /// offset back down — which in 'direction' mode is indistinguishable from
+  /// the user scrolling up, so the header would reveal itself every time the
+  /// list is flung to its end. Pinning the value at the limit means a bounce
+  /// contributes no delta at all. The top bounce still reaches `pull`, which
+  /// reads the raw offset for the refresh spinner.
+  private func clampedY(of scrollView: UIScrollView) -> CGFloat {
+    let y = adjustedY(of: scrollView)
+    let top = scrollView.adjustedContentInset.top - refreshInsetApplied(to: scrollView)
+    let maxY = max(0, maxOffset(of: scrollView) + top)
+    return min(max(y, 0), maxY)
+  }
+
   private func adjustedY(of scrollView: UIScrollView) -> CGFloat {
-    scrollView.contentOffset.y + scrollView.contentInset.top - refreshInsetApplied(to: scrollView)
+    // adjustedContentInset, NOT contentInset: UIKit clamps the offset against
+    // the adjusted value, and RN's safe-area handling lives in the difference
+    // between the two. Reading the raw inset makes every figure here wrong by
+    // the safe area — which shows up as a page that scrolls further than its
+    // own range, its content sliding under the header.
+    scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+      - refreshInsetApplied(to: scrollView)
   }
 
   /// A page list started dragging: whatever React press was armed under the
@@ -482,8 +562,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return cached
     }
     pageScrollViews[page] = nil
-    // A different scroll view carries none of our inset.
-    collapseSlack[page] = nil
+    // ...and the old observer is watching a view that is gone. Left in place
+    // it blocks a new one from being created below, so the replacement scroll
+    // view is never watched: its slack is computed once, while the content is
+    // still short, and never revised as the content grows — leaving the page
+    // with a whole band more range than it should have.
+    contentSizeObservers[page] = nil
     guard let root = pageChildren[page], let found = scrollViewResolver?(root) else { return nil }
     pageScrollViews[page] = WeakBox(found)
     // Lock a page's list to one axis per drag. A page lives inside a
@@ -516,11 +600,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// range get 0. Bottom inset never moves content or the current offset, so
   /// applying this is invisible until the user scrolls.
   private func applyCollapseSlack(to sv: UIScrollView, page: Int) {
-    let applied = collapseSlack[page] ?? 0
+    guard !applyingSlack else { return }
+    let applied = appliedSlack(sv)
     guard allowFullCollapse else {
       if applied != 0 {
+        applyingSlack = true
         sv.contentInset.bottom -= applied
-        collapseSlack[page] = nil
+        applyingSlack = false
+        setAppliedSlack(sv, 0)
       }
       return
     }
@@ -531,15 +618,16 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // scroll exists. Clamping it to 0 here would leave a page that nearly
     // fills the screen a little short of a full collapse, and a nearly empty
     // one unable to scroll at all.
-    let natural = sv.contentSize.height + (sv.contentInset.bottom - applied) - sv.bounds.height
-    let needed = max(0, headerHeight - natural)
+    let natural = sv.contentSize.height + (sv.adjustedContentInset.bottom - applied) - sv.bounds.height
+    // Ceiling as well as floor: a page can never need more than one header
+    // plus one viewport. Without it, a disagreement between what we write and
+    // what UIKit stores compounds on every pass instead of settling.
+    let needed = min(max(0, collapsibleHeight - natural), collapsibleHeight + sv.bounds.height)
     guard abs(needed - applied) > 0.5 else { return }
+    applyingSlack = true
     sv.contentInset.bottom += needed - applied
-    if needed == 0 {
-      collapseSlack[page] = nil
-    } else {
-      collapseSlack[page] = needed
-    }
+    applyingSlack = false
+    setAppliedSlack(sv, needed)
   }
 
   private func applyCollapseSlackToAll() {
@@ -593,9 +681,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // full-collapse point.
     let desired: CGFloat
     if directionMode {
-      desired = max(current, headerOffset)
+      // Align to the header, do NOT keep a deeper scroll. The bands sit at
+      // `offset`, so a page left scrolled past that shows its content behind
+      // them — which is what returning to a tab you had scrolled looked like.
+      // Content stays visible only where the page's scroll matches the offset.
+      desired = headerOffset
     } else {
-      desired = headerOffset >= headerHeight ? max(current, headerHeight) : headerOffset
+      desired = headerOffset >= collapsibleHeight ? max(current, collapsibleHeight) : headerOffset
     }
     if current != desired { sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired) }
     setPendingSync(page, sv.contentOffset.y < desired ? desired : nil)
@@ -690,12 +782,21 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// hold the offset eases the header to what it can (Twitter behaviour).
   private func reconcileHeaderToActive() {
     guard let sv = activeScrollView() else {
+      // No page to measure yet: anchor the delta to the header itself, so the
+      // first scroll that arrives is a delta of zero rather than the distance
+      // from whatever the PREVIOUS tab happened to be scrolled to.
+      lastActiveY = headerOffset
       if headerOffset > 0 {
         setPendingSync(activeIndex, headerOffset)
         scheduleGiveUp()
       }
       return
     }
+    // Re-anchor BEFORE any early return below. In 'direction' mode the header
+    // follows the scroll DELTA, so a stale anchor from the tab you just left
+    // turns the first scroll event on this tab into a large phantom delta —
+    // which reveals the header on top of content that is already at the top.
+    lastActiveY = adjustedY(of: sv)
     if pendingSync[activeIndex] != nil {
       trySync(activeIndex)
       if pendingSync[activeIndex] != nil {
@@ -703,14 +804,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
         return
       }
     }
-    let y = adjustedY(of: sv)
-    lastActiveY = y
+    let y = lastActiveY
     let target: CGFloat
     if directionMode {
       // Only concede when the page cannot hold the current offset.
-      target = y < headerOffset ? min(max(y, 0), headerHeight) : headerOffset
+      target = y < headerOffset ? min(max(y, 0), collapsibleHeight) : headerOffset
     } else {
-      target = min(max(y, 0), headerHeight)
+      target = min(max(y, 0), collapsibleHeight)
     }
     if target != headerOffset { animateHeaderOffset(to: target) }
   }
@@ -907,7 +1007,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   private func maxOffset(of sv: UIScrollView) -> CGFloat {
-    max(0, sv.contentSize.height + sv.contentInset.bottom - sv.bounds.height)
+    max(0, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
   }
 
   private func clampForDrag(_ y: CGFloat, in sv: UIScrollView) -> CGFloat {
