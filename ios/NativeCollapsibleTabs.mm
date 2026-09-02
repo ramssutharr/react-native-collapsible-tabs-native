@@ -284,6 +284,12 @@ using namespace facebook::react;
 {
   [super prepareForRecycle];
   [_content reset];
+  // Actually unsubscribe — emptying the table is not enough. The splitter
+  // holds listeners weakly so nothing leaked, but this view stayed a live
+  // delegate of scroll views that now serve whatever screen recycled them.
+  for (RCTScrollViewComponentView *component in _listened) {
+    [component removeScrollListener:self];
+  }
   [_listened removeAllObjects];
 }
 

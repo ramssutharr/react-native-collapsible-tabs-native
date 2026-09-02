@@ -42,6 +42,34 @@
   pan co-recognising with a band pan, on a scroll view living inside a band,
   IS a strip under this finger — captured there and suspended the moment the
   band pan commits to driving the page, with no hit-testing involved.
+- Fix (iOS): a shell that mounted straight onto a non-zero tab (deep link,
+  restored state) never activated it. Fabric applies props before layout
+  metrics, so the selection arrived at zero width and could not scroll the
+  pager; the first layout then pinned the right page into view while the
+  engine still considered page 0 active — every scroll of the visible page
+  was ignored and the header never moved on that tab until the user swiped
+  away and back. The selection is now activated in the first layout with real
+  width (the counterpart of Android's `pinPagerToSelection`, which is why
+  Android never had this).
+- Fix (iOS): a recycled shell now actually unsubscribes from the scroll views
+  it listened to — emptying its own bookkeeping table never removed it as a
+  delegate, so it kept hearing from views that had been recycled into other
+  screens; the drag-start handler (the one callback with no ownership guard)
+  then cancelled THAT screen's in-flight touches. The handler is also
+  ownership-guarded now, which covers the same leak for a list unmounted
+  while its shell lives on.
+- Fix: the JS `visited` set is pruned when the routes shrink, matching the
+  native reveal set. Stale indices past the new end stayed "visited" forever,
+  so if the routes later grew again those pages mounted eagerly — `lazy`
+  silently off for them.
+- Fix: `resolveHost` is sticky — once the native host has been wrapped for a
+  Reanimated `onPageScroll` handler, the wrapped component keeps being used
+  even if the handler is later removed. Swapping the element type back
+  remounted the entire native shell: every page, every scroll position.
+- Fix (Android): detach now also clears the reveal-stuck fallback and
+  recycles the retained touch event; reattach re-arms the fallback if any
+  page still owes a sync, so a page can never stay invisible across a
+  detach/attach cycle.
 
 ## 0.5.1 — 2026-09-01
 

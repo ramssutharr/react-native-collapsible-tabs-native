@@ -1131,12 +1131,21 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         // Anything requested while detached was intentionally not scheduled.
         layoutPassScheduled = false
         requestLayout()
+        // Detach dropped the reveal-stuck fallback; a page still owing a sync
+        // must not depend on that sync ever completing to become visible.
+        if (pendingSync.size() > 0) {
+            removeCallbacks(revealStuckPage)
+            postDelayed(revealStuckPage, REVEAL_STUCK_MS)
+        }
     }
 
     override fun onDetachedFromWindow() {
         ReactScrollViewHelper.removeScrollListener(discoveryListener)
         removeCallbacks(measureAndLayout)
         removeCallbacks(giveUpSync)
+        removeCallbacks(revealStuckPage)
+        lastTouch?.recycle()
+        lastTouch = null
         layoutPassScheduled = false
         reconcileAnimator?.cancel()
         super.onDetachedFromWindow()

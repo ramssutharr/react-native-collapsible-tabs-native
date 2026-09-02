@@ -456,6 +456,19 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if w > 0, pager.contentOffset.x != CGFloat(selectedIndex) * w, !userDragging {
       pager.contentOffset = CGPoint(x: CGFloat(selectedIndex) * w, y: 0)
     }
+    // Late activation for a shell that mounted straight onto a non-zero tab
+    // (deep link, restored state). Fabric applies props BEFORE layout
+    // metrics, so setSelectedIndex ran at zero width and scrollPager bailed
+    // without activating — the right page was then VISIBLE (the pin above)
+    // while activeIndex still said 0, and every scroll of the visible page
+    // was ignored: the header simply never moved on that tab until the user
+    // swiped away and back. Android has no such gap (onPropsApplied /
+    // pinPagerToSelection); this is its counterpart.
+    if w > 0, !userDragging, activeIndex != selectedIndex,
+       selectedIndex >= 0, selectedIndex < pageCount,
+       pager.contentOffset.x == CGFloat(selectedIndex) * w {
+      activate(selectedIndex)
+    }
     if w > 0 { ensureActiveScrollViewObserved() }
     // Viewport height feeds every page's slack.
     if h > 0 { applyCollapseSlackToAll() }
@@ -545,8 +558,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   /// A page list started dragging: whatever React press was armed under the
-  /// finger must not fire on release.
+  /// finger must not fire on release. Ownership guard: Fabric recycles scroll
+  /// views, so a view this shell once listened to can start dragging on a
+  /// DIFFERENT screen — without the guard that drag cancelled the other
+  /// screen's touches from here.
   @objc public func handleScrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    guard scrollView.isDescendant(of: self) else { return }
     cancelReactTouches?()
   }
 

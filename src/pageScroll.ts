@@ -37,6 +37,17 @@ export function resolveHost(
   host: AnyComponent,
   handler: PageScrollHandler | undefined,
 ): AnyComponent {
+  // STICKY: once this host has been wrapped, keep returning the wrapped
+  // component even when no worklet handler is set any more. The wrapper is a
+  // transparent superset of the plain host — but the element TYPE changing
+  // when a handler comes or goes makes React unmount and remount the entire
+  // native shell: every page, every scroll position, gone. (The one
+  // unavoidable swap is the first time a worklet handler appears on a shell
+  // that already rendered without one — set the handler from the first render
+  // to avoid even that.)
+  if (cachedPlain === host && cachedAnimated !== null && cachedAnimated !== false) {
+    return cachedAnimated;
+  }
   // Reanimated's `useEvent` is TYPED as returning a function but returns an
   // object carrying `workletEventHandler`; accept either shape, and treat a
   // genuine plain function as a JS-thread callback needing no wrapper.
@@ -46,8 +57,8 @@ export function resolveHost(
   if (!isWorklet) {
     return host;
   }
-  if (cachedAnimated !== null && cachedPlain === host) {
-    return cachedAnimated === false ? host : cachedAnimated;
+  if (cachedPlain === host && cachedAnimated === false) {
+    return host;
   }
   cachedPlain = host;
   try {

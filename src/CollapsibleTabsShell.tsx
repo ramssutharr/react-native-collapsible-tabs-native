@@ -101,6 +101,31 @@ export function CollapsibleTabsShell({
     });
   }, [index]);
 
+  // Routes can change at runtime. Native prunes its once-per-page reveal set
+  // when pageCount shrinks; this is the JS counterpart — without it, stale
+  // indices past the new end stay "visited" forever, and if the routes later
+  // grow again those pages mount eagerly: `lazy` silently off for them.
+  useEffect(() => {
+    setVisited((prev) => {
+      let stale = false;
+      prev.forEach((i) => {
+        if (i >= pages.length) {
+          stale = true;
+        }
+      });
+      if (!stale) {
+        return prev;
+      }
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < pages.length) {
+          next.add(i);
+        }
+      });
+      return next;
+    });
+  }, [pages.length]);
+
   /**
    * Mount-on-peek: native tells us the moment any sliver of a page is on
    * screen, so a lazy page mounts while it is still sliding in — and is
