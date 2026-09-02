@@ -339,6 +339,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     revealedPages.removeAll()
     collapseSlack.removeAllObjects()
     pageSlots.forEach { $0.alpha = 1 }
+    // Recycled mid-gesture: the pan's end never arrives, so nothing else
+    // would ever re-enable a strip we suspended.
+    restoreSuspendedStrips()
+    coRecognisingStrips.removeAllObjects()
+    bandPanIntent = nil
     fling?.stop()
     fling = nil
     refreshing = false
@@ -378,12 +383,22 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// (The Android side does the same from `dispatchTouchEvent`.)
   public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
     let hit = super.hitTest(point, with: event)
-    // Lock a horizontal strip in the header to one axis BEFORE any recogniser
-    // can begin. Doing it in gestureRecognizerShouldBegin is too late: that
-    // runs only for our own pan, and the strip's pan may already have started.
-    if headerSlot.bounds.contains(convert(point, to: headerSlot)),
-       let strip = horizontalScrollView(under: convert(point, to: headerSlot), in: headerSlot) {
-      strip.isDirectionalLockEnabled = true
+    let overBand = headerSlot.bounds.contains(convert(point, to: headerSlot))
+      || tabBarSlot.bounds.contains(convert(point, to: tabBarSlot))
+    if overBand {
+      // A touch landing on a band stops the page's momentum, exactly as a
+      // touch on the list itself would. Without this a fling from the
+      // previous band drag keeps scrolling the page under the NEW gesture —
+      // so a drag on a header strip reads as both axes moving at once.
+      stopMomentum()
+      // And lock a horizontal strip under the finger to one axis BEFORE any
+      // recogniser can begin. gestureRecognizerShouldBegin is too late: that
+      // runs only for our own pan, and the strip's may already have started.
+      for slot in [headerSlot, tabBarSlot] {
+        let local = convert(point, to: slot)
+        guard slot.bounds.contains(local) else { continue }
+        horizontalScrollView(under: local, in: slot)?.isDirectionalLockEnabled = true
+      }
     }
     // Only an already-resolved scroll view: hit-testing runs constantly, and
     // discovery walks the page's view tree.
@@ -959,42 +974,49 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
     guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+    guard let slot = pan.view, slot === headerSlot || slot === tabBarSlot else { return true }
+    // TRANSLATION, not velocity. This decision is made once per gesture, and
+    // velocity is an instantaneous reading — one jitter frame flips it, which
+    // is exactly how a wiggled drag ends with both the strip and the page
+    // moving. Translation integrates the whole approach to the threshold.
+    // Velocity is only the fallback for a flick so fast the recogniser fires
+    // before any translation has accumulated.
+    let t = pan.translation(in: self)
     let v = pan.velocity(in: self)
-    // Header: any direction — vertical drags scroll the page, horizontal
-    // ones are swallowed (inert by design, but they must still cancel the
-    // press under the finger). Tab strip: vertical only, it scrolls itself
-    // horizontally.
-    if pan.view === headerSlot {
-      // A horizontal list inside the header — a date picker, a chip row —
-      // owns its own gesture. Without this the band pan begins as well (they
-      // recognise simultaneously), so one drag scrolls that list AND drives
-      // the page vertically. Android hit-tests for exactly this; iOS has to
-      // as well.
-      if let strip = horizontalScrollView(under: pan.location(in: headerSlot), in: headerSlot) {
-        // The strip recognises alongside this pan, so a vertical drag would
-        // slide it sideways as well. Lock it to one axis per drag: it commits
-        // to whichever direction the gesture starts in, and a vertical drag
-        // leaves it alone entirely.
-        // Cede only what that strip is actually for. A sideways drag is its
-        // gesture; a vertical one is still the page's, so the strip does not
-        // become a dead zone for scrolling. Ties go to the strip, since a
-        // horizontal row is the more specific target.
-        let vertical = abs(v.y) > abs(v.x)
-        if vertical {
-          // Take the gesture AND stop the strip moving with it. The strip's
-          // own recogniser runs alongside ours, so a vertical drag with any
-          // sideways component slides it too. `isDirectionalLockEnabled` does
-          // not help: it only arbitrates on a scroll view that can scroll both
-          // ways, and this one is horizontal-only. Suspending it outright is
-          // decisive, and its pan is cancelled as a side effect.
-          strip.isScrollEnabled = false
-          suspendedStrip = strip
-        }
-        return vertical
+    let dx = max(abs(t.x), abs(t.y)) >= 2 ? abs(t.x) : abs(v.x)
+    let dy = max(abs(t.x), abs(t.y)) >= 2 ? abs(t.y) : abs(v.y)
+    // A horizontal list inside EITHER band owns its own gesture: a date
+    // picker or chip row in the header, and the tab strip itself — which is a
+    // horizontal scroll view in every tab bar worth the name, this package's
+    // own `TabBar` included. Without this the band pan begins as well (they
+    // recognise simultaneously), so one drag scrolls that list AND drives the
+    // page vertically.
+    //
+    // Android needs none of this: intercepting the touch there sends
+    // ACTION_CANCEL to the descendant, which ends its gesture for free. UIKit
+    // has no equivalent, so the arbitration has to be explicit.
+    if let strip = horizontalScrollView(under: pan.location(in: slot), in: slot) {
+      // Cede only what that strip is actually for. A sideways drag is its
+      // gesture; a vertical one is still the page's, so the strip does not
+      // become a dead zone for scrolling. Ties go to the strip, since a
+      // horizontal row is the more specific target.
+      let vertical = dy > dx
+      if vertical {
+        // Take the gesture AND stop the strip moving with it. The strip's own
+        // recogniser runs alongside ours, so a vertical drag with any sideways
+        // component slides it too. `isDirectionalLockEnabled` does not help:
+        // it only arbitrates on a scroll view that can scroll both ways, and
+        // these strips are horizontal-only. Suspending it outright is
+        // decisive, and its pan is cancelled as a side effect.
+        suspendStrip(strip)
       }
-      return true
+      return vertical
     }
-    return abs(v.y) > abs(v.x) * 1.5
+    // Nothing horizontal under the finger. The header takes any direction —
+    // vertical drags scroll the page, horizontal ones are swallowed (inert by
+    // design, but they must still cancel the press underneath). The tab bar
+    // takes vertical only.
+    return slot === headerSlot ? true : dy > dx * 1.5
   }
 
   /// The horizontally scrollable view under this point, if any.
@@ -1007,8 +1029,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     guard let hit = view.hitTest(point, with: nil) else { return nil }
     var candidate: UIView? = hit
     while let current = candidate, current !== view {
+      // `|| suspendedStrips.contains` — a strip WE suspended is still a
+      // strip. Judging it on `isScrollEnabled` alone makes it invisible to
+      // the next gesture if a restore has not landed yet, so that gesture is
+      // handed to the wrong owner: the drag reads as "no strip here" and the
+      // band claims it outright. Only a strip the consumer disabled should
+      // fail this test.
       if let scroll = current as? UIScrollView,
-         scroll.isScrollEnabled,
+         scroll.isScrollEnabled || suspendedStrips.contains(scroll),
          scroll.contentSize.width > scroll.bounds.width + 1 {
         return scroll
       }
@@ -1019,41 +1047,82 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                 shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-    true
+    if other is UIPanGestureRecognizer, let sv = other.view as? UIScrollView,
+       sv.isDescendant(of: headerSlot) || sv.isDescendant(of: tabBarSlot) {
+      if bandPanIntent == .drive {
+        // Our pan already committed; a strip announcing itself late is
+        // suspended on the spot.
+        suspendStrip(sv)
+      } else {
+        coRecognisingStrips.add(sv)
+      }
+    }
+    return true
   }
 
-  /// True while a horizontal header drag is being swallowed.
-  private var swallowingPan = false
-  /// A header strip whose scrolling is suspended for the duration of a
-  /// vertical band pan (restored when the gesture ends).
-  private weak var suspendedStrip: UIScrollView?
+  /// Scroll views UIKit reported as co-recognising with the current band
+  /// pan. The hit-test detector can miss a strip — RN's scroll component
+  /// returns its own WRAPPER for a touch between the strip's items, so the
+  /// scroll view is never in the hit view's ancestor chain, and a strip
+  /// whose content has not loaded fails the contentSize check besides. But
+  /// UIKit tells us exactly who else is recognising this touch: any scroll
+  /// pan co-recognising with a band pan, on a scroll view living inside a
+  /// band, IS a strip under this finger. Captured here; suspended the moment
+  /// the intent commits to driving the page. Weak — RN owns the views.
+  private let coRecognisingStrips = NSHashTable<UIScrollView>.weakObjects()
+
+  /// What a band pan is for. Committed ONCE per gesture, from translation,
+  /// and nothing moves before the commit — driving the page off an ambiguous
+  /// first frame is how a horizontal drag with a little vertical drift walks
+  /// the header around. (Android gets the same behaviour from its touch-slop
+  /// loop: between the two thresholds it simply keeps waiting.)
+  private enum BandPanIntent { case drive, swallow }
+  private var bandPanIntent: BandPanIntent?
+  /// Translation already spent when the intent committed; the drive measures
+  /// from here so nothing jumps on the commit frame.
+  private var driveAnchorY: CGFloat = 0
+  /// Band strips whose scrolling is suspended for the duration of a vertical
+  /// band pan, restored when it ends. A table rather than one reference:
+  /// both bands can hand a strip over, and a strip left disabled is a row
+  /// that never scrolls again. Weak — RN owns these views.
+  private let suspendedStrips = NSHashTable<UIScrollView>.weakObjects()
+
+  /// Never suspends a strip that was already disabled: that one belongs to
+  /// the consumer (`scrollEnabled={false}`), and re-enabling it on gesture
+  /// end would hand back scrolling they turned off.
+  private func suspendStrip(_ strip: UIScrollView) {
+    guard strip.isScrollEnabled else { return }
+    strip.isScrollEnabled = false
+    suspendedStrips.add(strip)
+  }
+
+  private func restoreSuspendedStrips() {
+    for strip in suspendedStrips.allObjects { strip.isScrollEnabled = true }
+    suspendedStrips.removeAllObjects()
+  }
 
   @objc private func handleBandPan(_ pan: UIPanGestureRecognizer) {
     if pan.state == .ended || pan.state == .cancelled || pan.state == .failed {
-      suspendedStrip?.isScrollEnabled = true
-      suspendedStrip = nil
+      restoreSuspendedStrips()
+      coRecognisingStrips.removeAllObjects()
     }
-    if pan.state == .began {
-      let v = pan.velocity(in: self)
-      swallowingPan = pan.view === headerSlot && abs(v.x) > abs(v.y) * 1.5
-      if swallowingPan { cancelReactTouches?() }
-    }
-    if swallowingPan {
-      if pan.state == .ended || pan.state == .cancelled { swallowingPan = false }
-      return
-    }
-    guard let sv = activeScrollView() else { return }
     switch pan.state {
     case .began:
-      cancelReactTouches?()
-      fling?.stop()
-      fling = nil
-      sv.setContentOffset(sv.contentOffset, animated: false)
-      dragStartOffset = sv.contentOffset.y
+      bandPanIntent = nil
+      // A finger on a band stops the page's momentum, exactly as a finger on
+      // the list itself would (hitTest already did this at touch-down; a
+      // gesture handed over mid-stream gets it here).
+      stopMomentum()
+      commitBandPanIntent(pan)
     case .changed:
-      let raw = dragStartOffset - pan.translation(in: self).y
+      if bandPanIntent == nil { commitBandPanIntent(pan) }
+      guard bandPanIntent == .drive, let sv = activeScrollView() else { return }
+      let raw = dragStartOffset - (pan.translation(in: self).y - driveAnchorY)
       sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: clampForDrag(raw, in: sv))
-    case .ended, .cancelled:
+    case .ended, .cancelled, .failed:
+      let intent = bandPanIntent
+      bandPanIntent = nil
+      guard intent == .drive, let sv = activeScrollView() else { return }
       let velocity = -pan.velocity(in: self).y
       if sv.contentOffset.y < 0 {
         if refreshEnabled, !refreshing, pull >= Self.refreshThreshold {
@@ -1067,6 +1136,41 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     default:
       break
     }
+  }
+
+  private func commitBandPanIntent(_ pan: UIPanGestureRecognizer) {
+    let t = pan.translation(in: self)
+    let v = pan.velocity(in: self)
+    // Enough signal to trust a direction: a few points of travel, or a flick
+    // fast enough that its first callback already carries one.
+    guard max(abs(t.x), abs(t.y)) >= 4 || max(abs(v.x), abs(v.y)) >= 120 else { return }
+    let horizontal = max(abs(t.x), abs(t.y)) >= 4 ? abs(t.x) > abs(t.y) : abs(v.x) > abs(v.y)
+    if horizontal {
+      // Inert by design on the header — a majority-horizontal drag must never
+      // drive the page with its vertical drift, most visibly over a strip
+      // whose content has not loaded yet (nothing to detect, nothing to
+      // scroll). The press under the finger must still not fire.
+      bandPanIntent = .swallow
+      cancelReactTouches?()
+      return
+    }
+    guard let sv = activeScrollView() else { return }
+    bandPanIntent = .drive
+    cancelReactTouches?()
+    // The page owns this gesture now: freeze every strip UIKit reported on
+    // the same touch, found or not by the hit-test detector.
+    for strip in coRecognisingStrips.allObjects { suspendStrip(strip) }
+    dragStartOffset = sv.contentOffset.y
+    driveAnchorY = t.y
+  }
+
+  /// Stops a band-driven fling AND the active list's own deceleration — a
+  /// touch on a band means "hold still" just like a touch on the list.
+  private func stopMomentum() {
+    fling?.stop()
+    fling = nil
+    guard let sv = pageScrollViews[activeIndex]?.value, sv.isDecelerating else { return }
+    sv.setContentOffset(sv.contentOffset, animated: false)
   }
 
   private func maxOffset(of sv: UIScrollView) -> CGFloat {

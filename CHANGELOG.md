@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+- Fix (iOS): a vertical drag on the **tab strip** no longer slides it sideways.
+  0.5.1 gave the header band a horizontal-list hit-test and suspended that list
+  for the duration of a vertical drag; the tab-bar band never got the same
+  treatment and fell through to a bare direction check. Since a tab strip is a
+  horizontal scroll view in every tab bar worth the name — this package's own
+  `TabBar` included — that was the default configuration, not an edge case: the
+  band pan and the strip's own pan recognise simultaneously, so one drag
+  scrolled the page AND dragged the tabs. Both bands now share one rule.
+  (Android was never affected: intercepting the touch there sends
+  `ACTION_CANCEL` to the descendant, which ends its gesture for free.)
+- Fix (iOS): a suspended strip could be left permanently unscrollable. Only one
+  strip was tracked, so a second suspension dropped the first, and a shell
+  recycled mid-gesture never saw the pan end that would have restored it. A
+  strip the consumer disabled with `scrollEnabled={false}` is now also left
+  alone rather than being re-enabled on gesture end.
+- Fix (iOS): a strip this shell had suspended was invisible to the hit-test
+  that decides who owns the *next* gesture, so a drag arriving before the
+  restore landed was handed to the band instead of the strip.
+- Fix (iOS): the band-drag arbitration no longer decides from `velocity` — an
+  instantaneous reading that one jitter frame flips, which is how a wiggled
+  drag ended with the strip AND the page both moving. Direction is now read
+  from the gesture's accumulated translation, and the band pan commits an
+  intent ONCE per gesture: nothing moves before the commit, so an ambiguous
+  first frame cannot walk the page around, and a majority-horizontal drag on
+  the header is swallowed whole instead of driving the page with its vertical
+  drift (worst over a strip whose content had not loaded yet — nothing to
+  detect, nothing to scroll, every drift frame moved the page).
+- Fix (iOS): a touch landing on a band now stops the page's momentum, exactly
+  as a touch on the list itself would. Starting a new drag on a header strip
+  before the previous fling had ended left that fling scrolling the page under
+  the new gesture — which read as both axes moving at once.
+- Fix (iOS): the one hole hit-testing cannot close. A touch between a strip's
+  items is answered by RN's scroll component with its own WRAPPER — the scroll
+  view is never in the hit view's ancestor chain — and a strip whose content
+  has not loaded fails the contentSize check besides, so the band pan drove
+  the page while the undetected strip's own pan scrolled it sideways. The
+  shell now also listens to UIKit's simultaneous-recognition query: any scroll
+  pan co-recognising with a band pan, on a scroll view living inside a band,
+  IS a strip under this finger — captured there and suspended the moment the
+  band pan commits to driving the page, with no hit-testing involved.
+
 ## 0.5.1 — 2026-09-01
 
 - Fix (iOS): a horizontal list inside the header — a date picker, a chip row —
