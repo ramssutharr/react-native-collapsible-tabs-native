@@ -32,7 +32,8 @@ path instead of trying to keep up with it.
 
 - Collapsing header + pinned tab bar over a native horizontal pager, in
   frame-perfect sync with the active list (native
-  `UIScrollViewDelegate` / `View.OnScrollChangeListener`).
+  `UIScrollViewDelegate` / `View.OnScrollChangeListener`). The tab bar can
+  also collapse away with the header (`pinTabBar={false}`).
 - Any vertical list that renders a React Native `ScrollView` works as a tab
   page: `ScrollView`, `FlatList`, `SectionList`,
   [FlashList](https://github.com/Shopify/flash-list),
@@ -40,6 +41,9 @@ path instead of trying to keep up with it.
   `createTabList` so its content is padded under the header.
 - Vertical drags on the header (or tab bar) scroll the active page, with a
   display-link-driven fling on iOS and native event forwarding on Android.
+  Horizontal lists inside the bands — a chip row in the header, the tab strip
+  itself — keep their own sideways gestures, while their vertical drags still
+  scroll the page.
 - Swipe between tabs; a tab page mounts the moment it peeks into view (not
   when the swipe settles), and a freshly-mounted or neighbouring page is
   aligned to the current header offset before it becomes visible.
@@ -178,11 +182,12 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `renderScene` | `({ route }) => ReactNode` | one page per route |
 | `onIndexChange` | `(index) => void` | tab press or swipe settled |
 | `renderHeader` | `() => ReactNode` | the collapsing header |
-| `renderTabBar` | `({ routes, index, onIndexChange }) => ReactNode` | defaults to `TabBar`; return `null` to put your tabs inside the header instead |
+| `renderTabBar` | `({ routes, index, onIndexChange }) => ReactNode` | defaults to `TabBar`. Want the tabs to scroll away with the header? Keep them here and pass `pinTabBar={false}` — don't move them into `renderHeader` (pages clear the tab-bar band's height either way, and an empty band gives the shell nowhere to put the tabs back without landing on content) |
 | `tabBarProps` | `TabBarProps` | colours/`onTabPress` for the default `TabBar`; ignored with `renderTabBar` |
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
+| `pinTabBar` | `boolean` | default **`true`**: the tab bar stays pinned at the top once the header is gone. `false`: the whole band, tabs included, collapses as part of the header |
 | `allowFullCollapse` | `boolean` | default **`true`**. Tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks; tabs with enough content are untouched. `false` restores the old behaviour |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
 | `onPageScroll` | Reanimated `useEvent` handler, or `(e) => void` | the pager's live swipe position, for a tab indicator that tracks the finger. Emitted only while a handler is set. A worklet reads it on the UI thread; a plain function costs a JS call per frame |
