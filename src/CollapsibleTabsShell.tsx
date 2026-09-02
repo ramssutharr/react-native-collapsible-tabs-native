@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -90,41 +89,34 @@ export function CollapsibleTabsShell({
   }, []);
 
   const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([index]));
-  useEffect(() => {
-    setVisited((prev) => {
-      if (prev.has(index)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
-  }, [index]);
 
-  // Routes can change at runtime. Native prunes its once-per-page reveal set
-  // when pageCount shrinks; this is the JS counterpart — without it, stale
-  // indices past the new end stay "visited" forever, and if the routes later
-  // grow again those pages mount eagerly: `lazy` silently off for them.
-  useEffect(() => {
-    setVisited((prev) => {
-      let stale = false;
-      prev.forEach((i) => {
-        if (i >= pages.length) {
-          stale = true;
-        }
-      });
-      if (!stale) {
-        return prev;
+  // Derived state, adjusted DURING render rather than in an effect: React
+  // re-runs the component with the new value before committing, so a lazy
+  // page can never paint one frame late — the effect version handed the
+  // committed frame a stale set first. visited = previous ∪ {index}, pruned
+  // to the current route count (native prunes its once-per-page reveal set
+  // the same way; without the prune, stale indices past a shrink stay
+  // "visited" forever and mount eagerly if the routes grow again).
+  const nextVisited = new Set<number>();
+  visited.forEach((i) => {
+    if (i < pages.length) {
+      nextVisited.add(i);
+    }
+  });
+  if (index < pages.length) {
+    nextVisited.add(index);
+  }
+  let visitedChanged = nextVisited.size !== visited.size;
+  if (!visitedChanged) {
+    nextVisited.forEach((i) => {
+      if (!visited.has(i)) {
+        visitedChanged = true;
       }
-      const next = new Set<number>();
-      prev.forEach((i) => {
-        if (i < pages.length) {
-          next.add(i);
-        }
-      });
-      return next;
     });
-  }, [pages.length]);
+  }
+  if (visitedChanged) {
+    setVisited(nextVisited);
+  }
 
   /**
    * Mount-on-peek: native tells us the moment any sliver of a page is on
@@ -180,6 +172,9 @@ export function CollapsibleTabsShell({
 
   return (
     <CollapsibleTabsContext.Provider value={contextValue}>
+      {/* eslint-disable-next-line react-hooks/static-components -- resolveHost
+          caches the wrapped host at module level, so this identity IS stable
+          across renders; the rule cannot see through the cache. */}
       <Host
         style={[styles.host, style]}
         headerHeight={headerHeight}

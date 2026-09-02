@@ -70,6 +70,17 @@
   recycles the retained touch event; reattach re-arms the fallback if any
   page still owes a sync, so a page can never stay invisible across a
   detach/attach cycle.
+- Chore: `yarn lint` actually works now (ESLint flat config +
+  typescript-eslint + react-hooks; it had no config and no dependency and had
+  never run), and it found real issues: the lazy-mount `visited` set is now
+  derived during render instead of in effects, so a freshly visited page can
+  never paint one frame behind the committed state, and the default
+  `TabBar`'s `Animated.Value` moved off a render-time ref read. CI runs
+  typecheck + lint on GitHub Actions.
+- Chore: `react-native-reanimated` is declared as an optional peer
+  (`peerDependenciesMeta`) instead of an undeclared `require`; README
+  documents the Jest `transformIgnorePatterns` requirement for the
+  untranspiled-TypeScript entry point.
 
 ## 0.5.1 — 2026-09-01
 

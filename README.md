@@ -111,6 +111,19 @@ cd ios && pod install
 Autolinked on both platforms. New Architecture must be enabled (default since
 RN 0.76).
 
+The package ships untranspiled TypeScript (Metro handles it natively). **Jest
+does not** — if your tests import a screen that uses this package, allow it
+through `transformIgnorePatterns` in your Jest config:
+
+```js
+transformIgnorePatterns: [
+  'node_modules/(?!(react-native|@react-native|react-native-collapsible-tabs-native)/)',
+],
+```
+
+`react-native-reanimated` is an **optional** peer: it is only required (or
+even imported) if you pass a Reanimated `useEvent` worklet to `onPageScroll`.
+
 ## Usage
 
 ```tsx

@@ -20,7 +20,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.{ts,tsx}\""
+    "lint": "eslint src"
   },
   "keywords": [
     "android",
@@ -56,13 +56,17 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": ">=0.76.0"
+    "react-native": ">=0.76.0",
+    "react-native-reanimated": ">=3.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "react": "19.1.0",
     "react-native": "0.83.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.69.0"
   },
   "codegenConfig": {
     "name": "RNCollapsibleTabsSpec",
@@ -75,6 +79,11 @@
       "componentProvider": {
         "NativeCollapsibleTabs": "NativeCollapsibleTabs"
       }
+    }
+  },
+  "peerDependenciesMeta": {
+    "react-native-reanimated": {
+      "optional": true
     }
   }
 }

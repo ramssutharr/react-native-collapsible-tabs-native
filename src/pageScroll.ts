@@ -62,7 +62,8 @@ export function resolveHost(
   }
   cachedPlain = host;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // Lazy on purpose, so Reanimated stays an optional peer.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const reanimated = require('react-native-reanimated');
     const create = reanimated?.default?.createAnimatedComponent ?? reanimated?.createAnimatedComponent;
     cachedAnimated = typeof create === 'function' ? (create(host) as AnyComponent) : false;

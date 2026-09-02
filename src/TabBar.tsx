@@ -124,7 +124,10 @@ function TabBarItem({
   labelStyle,
   onPress,
 }: ItemProps) {
-  const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
+  // useState initializer, not `useRef(...).current`: same create-once
+  // semantics, but an Animated.Value is a stable mutable box rather than a
+  // ref, and the hooks lint (rightly) refuses ref reads during render.
+  const [progress] = React.useState(() => new Animated.Value(active ? 1 : 0));
   const [labelWidth, setLabelWidth] = React.useState(0);
 
   useEffect(() => {

@@ -50,6 +50,8 @@ type PageScrollEvent = Readonly<{
   offset: Float;
 }>;
 
+// Codegen requires an empty event payload to be spelled exactly this way.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type RefreshEvent = Readonly<{}>;
 
 export interface NativeProps extends ViewProps {
