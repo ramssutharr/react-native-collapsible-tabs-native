@@ -18,6 +18,13 @@ side only owns geometry and gestures.
   <a href="https://github.com/ramssutharr/react-native-collapsible-tabs-native/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/react-native-collapsible-tabs-native.svg" alt="license" /></a>
 </p>
 
+<p align="center">
+  <img src="docs/demo-ios.gif" width="270" alt="iOS demo — collapsing header, tab swipes, short-tab collapse, pull-to-refresh" />
+  &nbsp;&nbsp;
+  <img src="docs/demo-android.gif" width="270" alt="Android demo — the same shell on ViewPager2" />
+</p>
+<p align="center"><sub>The <a href="example">example app</a> on iOS and Android.</sub></p>
+
 ## Why not a JS implementation?
 
 JS collapsible-tab libraries (including ones built on Reanimated) move the
