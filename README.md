@@ -101,6 +101,12 @@ roadmap fine print:
   change your mind.
 - No web / Expo Go support (native code; works in Expo dev clients / prebuild).
 
+## Example
+
+`example/` is a bare RN app wired straight to the repo's `src/` and native
+code (no copying) — `cd example && yarn install`, then the usual `yarn ios` /
+`yarn android`. See [example/README.md](example/README.md).
+
 ## Install
 
 ```sh

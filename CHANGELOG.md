@@ -81,6 +81,11 @@
   (`peerDependenciesMeta`) instead of an undeclared `require`; README
   documents the Jest `transformIgnorePatterns` requirement for the
   untranspiled-TypeScript entry point.
+- Chore: an `example/` app (RN 0.83, New Architecture) consuming the library
+  straight from the repo root — Metro watch + autolinking overrides, no
+  copying — with one screen that exercises the whole surface: header chip
+  strip, long/short/ScrollView tabs, pull-to-refresh, threshold chrome swap,
+  and live toggles for `collapseMode` / `pinTabBar` / `allowFullCollapse`.
 
 ## 0.5.1 — 2026-09-01
 
