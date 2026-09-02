@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 — 2026-09-02
 
 - Fix (iOS): a vertical drag on the **tab strip** no longer slides it sideways.
   0.5.1 gave the header band a horizontal-list hit-test and suspended that list
