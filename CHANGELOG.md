@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Fix (iOS): the refresh spinner no longer appears on a momentum bounce. A
+  fling to the top overshoots into UIKit's rubber-band, the offset goes
+  negative for a few frames, and the engine read that exactly like a finger
+  pull — spinner in, spinner out. The bands still follow the bounce (the list
+  must stay attached to the tab bar), but the spinner now arms only for an
+  over-drag a finger started — the list's own tracking or a header-band drag
+  — the way `UIRefreshControl` does, and fades naturally once released.
+
 ## 0.7.0 — 2026-09-03
 
 - New: `onHeaderOffsetChange` — the bands' live offset

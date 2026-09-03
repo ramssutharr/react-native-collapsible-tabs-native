@@ -90,6 +90,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   private var headerOffset: CGFloat = 0
   private var pull: CGFloat = 0
+  /// True while the current over-drag was started by a finger — the list's
+  /// own tracking or a header-band drag — as opposed to UIKit's rubber-band
+  /// bounce after a fling to the top. The BANDS follow `pull` either way, so
+  /// the list never detaches from the tab bar; only the refresh spinner is
+  /// gated on this, the way UIRefreshControl only arms under a finger.
+  private var pullFromDrag = false
   /// 'direction' collapse mode: the offset follows the scroll DELTA.
   private var directionMode = false
   /// Last seen offset of the active page (delta source for direction mode).
@@ -443,6 +449,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     refreshHost = nil
     headerOffset = 0
     pull = 0
+    pullFromDrag = false
     collapsed = false
     activeIndex = 0
     lastEmittedIndex = -1
@@ -572,10 +579,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     let transform = CGAffineTransform(translationX: 0, y: ty)
     headerSlot.transform = transform
     tabBarSlot.transform = transform
-    spinner.center = CGPoint(x: bounds.width / 2, y: max(pull, 0) / 2)
+    // A momentum bounce moves the bands but must not show the spinner.
+    let visiblePull = pullFromDrag ? max(pull, 0) : 0
+    spinner.center = CGPoint(x: bounds.width / 2, y: visiblePull / 2)
     if !refreshing {
-      spinner.alpha = refreshEnabled ? min(1, pull / Self.refreshThreshold) : 0
-      spinner.transform = CGAffineTransform(rotationAngle: pull / Self.refreshThreshold * .pi)
+      spinner.alpha = refreshEnabled ? min(1, visiblePull / Self.refreshThreshold) : 0
+      spinner.transform = CGAffineTransform(rotationAngle: visiblePull / Self.refreshThreshold * .pi)
     }
     emitHeaderOffset()
   }
@@ -642,6 +651,14 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // mounting), a clamped offset must not pop the header open.
     if pendingSync[activeIndex] != nil, target < headerOffset { return }
     pull = max(0, -adjustedY(of: scrollView))
+    // Arm the spinner only for an over-drag that a finger started; once the
+    // list is back at its top the arming is spent, so the next fling-bounce
+    // starts clean.
+    if pull > 0 {
+      if scrollView.isTracking || bandPanIntent == .drive { pullFromDrag = true }
+    } else {
+      pullFromDrag = false
+    }
     setHeaderOffsetNow(target)
   }
 
@@ -682,7 +699,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public func handleScrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
     guard scrollView === activeScrollView() else { return }
-    if refreshEnabled, !refreshing, pull >= Self.refreshThreshold {
+    if refreshEnabled, !refreshing, pullFromDrag, pull >= Self.refreshThreshold {
       beginRefresh(emit: true)
     }
   }
@@ -1255,7 +1272,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       guard intent == .drive, let sv = activeScrollView() else { return }
       let velocity = -pan.velocity(in: self).y
       if sv.contentOffset.y < 0 {
-        if refreshEnabled, !refreshing, pull >= Self.refreshThreshold {
+        if refreshEnabled, !refreshing, pullFromDrag, pull >= Self.refreshThreshold {
           beginRefresh(emit: true)
         } else if !refreshing {
           sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: 0), animated: true)
