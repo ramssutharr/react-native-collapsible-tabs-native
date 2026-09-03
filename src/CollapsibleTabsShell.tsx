@@ -169,11 +169,19 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
     });
   }, []);
 
+  // The pager settling on the page JS already selected is an ECHO, not a
+  // change: a tab press sets `index`, the pager animates there, and native
+  // reports the settle. Forwarding that would make a plain tab switch look
+  // exactly like the user tapping the active tab again — which consumers
+  // use for "scroll to top". Only a genuinely different index (a swipe) is a
+  // change worth reporting.
   const handlePageSelected = useCallback(
     (e: { nativeEvent: { index: number } }) => {
-      onIndexChange(e.nativeEvent.index);
+      if (e.nativeEvent.index !== index) {
+        onIndexChange(e.nativeEvent.index);
+      }
     },
-    [onIndexChange],
+    [index, onIndexChange],
   );
 
   const handleCollapsedChange = useCallback(

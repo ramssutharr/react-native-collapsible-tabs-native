@@ -13,6 +13,11 @@
   once the list can hold it, and `expand` animates the header by itself,
   which that mode allows. `setIndex` emits `onIndexChange` exactly like a
   swipe, so a controlled index stays the source of truth.
+- Fix: the pager settling on the page JS already selected is no longer
+  echoed as `onIndexChange`. A tab press sets the index, the pager animates
+  there, and native reported the settle — indistinguishable from the user
+  tapping the active tab again, which is the gesture consumers use for
+  "scroll to top". Only a genuinely different index (a swipe) is reported.
 - **Breaking-ish:** React Native peer floor raised from 0.76 to **0.80**. The
   spec now imports `codegenNativeComponent` / `codegenNativeCommands` and the
   `CodegenTypes` from the `react-native` root — the deep
