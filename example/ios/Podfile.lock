@@ -1944,7 +1944,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - react-native-collapsible-tabs-native (0.5.1):
+  - react-native-collapsible-tabs-native (0.5.2):
     - boost
     - DoubleConversion
     - fast_float
@@ -2915,7 +2915,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: c546207c9ac05ba26b90ba26f1288f84c8867f2e
   React-microtasksnativemodule: ad2becc1076529952b6db26d0a1476ec489b9067
   React-mutationobservernativemodule: 867e9c215f21b4308fa98473f3c38585b5897e44
-  react-native-collapsible-tabs-native: 6b6a93586ffc4745e80684469295c80b9f63bb11
+  react-native-collapsible-tabs-native: bf220e2465b7ee4c400b691d4f62c9d1ffd76955
   react-native-safe-area-context: 6cf08f4151132f9cf2adb948dc6c4ac387f8d30f
   React-NativeModulesApple: 519f9f98375db6458a7220becd25db81b3860b76
   React-networking: 2318cba8288ec5df38e899feed3baaac0629b4bd

@@ -123,6 +123,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var reconcileAnimator: ValueAnimator? = null
     /** True from the user's drag start until the pager settles. */
     private var userDragging = false
+    /** `collapse()` in direction mode: a scroll only moves the header by its
+     *  delta, so the engine lands exactly on the collapse point once the list
+     *  reaches it. */
+    private var pendingCollapse = false
 
     /** Latest touch seen by the shell — `notifyNativeGestureStarted` needs an
      *  event, and a pager drag begins inside ViewPager2 where we have none. */
@@ -290,6 +294,70 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     fun setRefreshing(value: Boolean) {
         if (refreshLayout.isRefreshing != value) refreshLayout.isRefreshing = value
+    }
+
+    // MARK: - Commands (imperative ref API)
+    //
+    // Every command goes THROUGH the collapse engine. The header is derived
+    // from the active list's position, so moving it on its own would desync
+    // it from the content; these move the list and let the engine follow.
+
+    /** Scroll a page's list to its top (`page` < 0 = the active page). */
+    fun scrollToTop(page: Int, animated: Boolean) {
+        val target = if (page < 0) activeIndex else page
+        val sv = scrollViewOf(target) ?: return
+        if (target == activeIndex) reconcileAnimator?.cancel()
+        pendingCollapse = false
+        if (animated) sv.smoothScrollTo(0, 0) else sv.scrollTo(0, 0)
+    }
+
+    /**
+     * Move the pager. `onPageSelected` fires the same way it does for a
+     * swipe, so JS's controlled index catches up naturally — the selection
+     * is recorded first, or the callback would discard the event as a
+     * re-layout echo.
+     */
+    fun setIndex(index: Int, animated: Boolean) {
+        if (index < 0 || index >= pageCount) return
+        selectedIndex = index
+        pendingSelectedIndex = -1
+        if (pager.currentItem != index) pager.setCurrentItem(index, animated && isLaidOut && width > 0)
+    }
+
+    /** Scroll the active list until the bands are fully collapsed. */
+    fun collapse(animated: Boolean) {
+        val sv = activeScrollView() ?: return
+        reconcileAnimator?.cancel()
+        // The list must be able to hold the offset before anything scrolls it.
+        applyCollapseSlack(sv)
+        if (sv.scrollY >= collapsibleHeightPx) {
+            // Already deep enough. Classic: the header mirrors it. Direction:
+            // the bands may still be open (the offset is not tied to the
+            // position there) — close them directly, which offset <= scrollY
+            // permits.
+            if (directionMode) applyHeaderOffset(collapsibleHeightPx, animated)
+            return
+        }
+        pendingCollapse = directionMode
+        val target = minOf(collapsibleHeightPx, contentRoom(sv).coerceAtLeast(0))
+        if (animated) sv.smoothScrollTo(0, target) else sv.scrollTo(0, target)
+    }
+
+    /**
+     * Bring the bands back. Classic: the header mirrors the list, so scroll
+     * the list to its top. Direction: the header alone, which that mode
+     * allows (offset 0 <= any scrollY).
+     */
+    fun expand(animated: Boolean) {
+        pendingCollapse = false
+        if (!directionMode) {
+            scrollToTop(-1, animated)
+            return
+        }
+        applyHeaderOffset(0, animated)
+        // Re-anchor the delta tracker: the next scroll must be a delta from
+        // the list's real position, not a phantom jump.
+        activeScrollView()?.let { lastActiveScrollY = it.scrollY }
     }
 
     /**
@@ -547,7 +615,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                     return@OnScrollChangeListener
                 }
             }
-            val target = if (directionMode) {
+            var target = if (directionMode) {
                 // Follow the scroll DELTA: any up-scroll reveals the header,
                 // any down-scroll hides it; pinned open at the very top.
                 // Because the offset only ever grows at the content's own
@@ -560,6 +628,13 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                 scrollY.coerceIn(0, collapsibleHeightPx)
             }
             lastActiveScrollY = scrollY
+            // A programmatic collapse in direction mode: the delta alone would
+            // leave the bands wherever they started plus the distance
+            // scrolled; land them exactly once the list can hold the offset.
+            if (pendingCollapse && scrollY >= collapsibleHeightPx) {
+                pendingCollapse = false
+                target = collapsibleHeightPx
+            }
             // While the active page is still catching up to the header
             // (content mounting), a clamped scroll must not pop the header
             // open — only real user scrolls move it down.

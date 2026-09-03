@@ -92,6 +92,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var revealedPages: Set<Int> = []
   /// True between the user's horizontal drag start and the pager settling.
   private var userDragging = false
+  /// `collapse()` in direction mode: a scroll only moves the header by its
+  /// delta, so the engine is asked to land exactly on the collapse point once
+  /// the list reaches it.
+  private var pendingCollapse = false
 
   /// Discovered scroll view per page, validated on use.
   private var pageScrollViews: [Int: WeakBox<UIScrollView>] = [:]
@@ -293,6 +297,67 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
   }
 
+  // MARK: - Commands (imperative ref API)
+  //
+  // Every command goes THROUGH the collapse engine. The header is derived
+  // from the active list's position, so moving it on its own would desync it
+  // from the content; these move the list and let the engine follow.
+
+  /// Scroll a page's list to its top (`page` < 0 = the active page).
+  @objc public func scrollToTop(_ page: Int, animated: Bool) {
+    let target = page < 0 ? activeIndex : page
+    guard let sv = scrollView(for: target) else { return }
+    if target == activeIndex { stopMomentum() }
+    pendingCollapse = false
+    sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: -sv.adjustedContentInset.top), animated: animated)
+  }
+
+  /// Move the pager. Activation (and the `onPageSelected` emit) happens the
+  /// same way it does for a swipe — immediately for a jump, on settle for an
+  /// animated scroll — so JS's controlled index catches up naturally.
+  @objc public func setIndex(_ index: Int, animated: Bool) {
+    guard index >= 0, index < pageCount else { return }
+    selectedIndex = index
+    scrollPager(to: index, animated: animated && bounds.width > 0 && window != nil)
+  }
+
+  /// Scroll the active list until the bands are fully collapsed.
+  @objc public func collapse(_ animated: Bool) {
+    guard let sv = activeScrollView() else { return }
+    stopMomentum()
+    // The list must be able to hold the offset before anything scrolls it.
+    applyCollapseSlack(to: sv, page: activeIndex)
+    let y = adjustedY(of: sv)
+    if y >= collapsibleHeight {
+      // Already deep enough. Classic mode: the header mirrors it, nothing to
+      // do. Direction mode: the bands may still be open, since there the
+      // offset is not tied to the position — close them directly, which the
+      // offset <= y invariant permits.
+      if directionMode {
+        if animated { animateHeaderOffset(to: collapsibleHeight) } else { setHeaderOffsetNow(collapsibleHeight) }
+      }
+      return
+    }
+    pendingCollapse = directionMode
+    let raw = collapsibleHeight - sv.adjustedContentInset.top + refreshInsetApplied(to: sv)
+    sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: min(raw, maxOffset(of: sv))), animated: animated)
+  }
+
+  /// Bring the bands back. Classic mode: the header mirrors the list, so
+  /// scroll the list to its top. Direction mode: the header alone, which that
+  /// mode allows (offset 0 <= any y).
+  @objc public func expand(_ animated: Bool) {
+    pendingCollapse = false
+    guard directionMode else {
+      scrollToTop(-1, animated: animated)
+      return
+    }
+    if animated { animateHeaderOffset(to: 0) } else { setHeaderOffsetNow(0) }
+    // Re-anchor the delta tracker: the next scroll must be a delta from the
+    // list's real position, not a phantom jump.
+    if let sv = activeScrollView() { lastActiveY = adjustedY(of: sv) }
+  }
+
   // MARK: - RN children
 
   @objc public func mountChild(_ child: UIView, nativeId: String?, index: Int) {
@@ -344,6 +409,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     restoreSuspendedStrips()
     coRecognisingStrips.removeAllObjects()
     bandPanIntent = nil
+    pendingCollapse = false
     fling?.stop()
     fling = nil
     refreshing = false
@@ -512,7 +578,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
         y = clampedY(of: scrollView)
       }
     }
-    let target: CGFloat
+    var target: CGFloat
     if directionMode {
       // Follow the scroll DELTA: any up-scroll reveals the header, any
       // down-scroll hides it; pinned open at the very top. The offset only
@@ -525,6 +591,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       target = min(max(y, 0), collapsibleHeight)
     }
     lastActiveY = y
+    // A programmatic collapse in direction mode: the delta alone would leave
+    // the bands wherever they started plus the distance scrolled; land them
+    // exactly once the list can hold the full offset.
+    if pendingCollapse, y >= collapsibleHeight {
+      pendingCollapse = false
+      target = collapsibleHeight
+    }
     // While the active page is still catching up to the header (content
     // mounting), a clamped offset must not pop the header open.
     if pendingSync[activeIndex] != nil, target < headerOffset { return }

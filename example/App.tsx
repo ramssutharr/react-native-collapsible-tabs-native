@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
   CollapsibleTabView,
   TabFlatList,
   TabScrollView,
+  type CollapsibleTabsRef,
 } from 'react-native-collapsible-tabs-native';
 
 /**
@@ -24,6 +25,8 @@ import {
  *   range it lacks), and a plain ScrollView tab
  * - container pull-to-refresh, collapse threshold chrome swap, and live
  *   toggles for collapseMode / pinTabBar / allowFullCollapse
+ * - the imperative ref API (scrollToTop / collapse / expand / setIndex) on
+ *   the buttons in the top bar, and "tap the active tab again → top"
  */
 
 const ROUTES = [
@@ -99,7 +102,16 @@ function Toggle({
   );
 }
 
+function Action({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable style={styles.action} onPress={onPress}>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function App() {
+  const tabs = useRef<CollapsibleTabsRef>(null);
   const [index, setIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -108,6 +120,18 @@ export default function App() {
   const [allowFullCollapse, setAllowFullCollapse] = useState(true);
 
   const navigationState = useMemo(() => ({ index, routes: ROUTES }), [index]);
+
+  // Tapping the ACTIVE tab again scrolls it to the top — the affordance the
+  // ref API exists for.
+  const onIndexChange = useCallback(
+    (next: number) => {
+      if (next === index) {
+        tabs.current?.scrollToTop();
+      }
+      setIndex(next);
+    },
+    [index],
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -163,10 +187,20 @@ export default function App() {
         <Text style={styles.topBarTitle}>
           {collapsed ? 'Collapsible Tabs' : 'Example App'}
         </Text>
+        <View style={styles.actions}>
+          <Action label="Top" onPress={() => tabs.current?.scrollToTop()} />
+          <Action label="Collapse" onPress={() => tabs.current?.collapse()} />
+          <Action label="Expand" onPress={() => tabs.current?.expand()} />
+          <Action
+            label="About ⚡︎"
+            onPress={() => tabs.current?.setIndex(2, { animated: false })}
+          />
+        </View>
       </View>
       <CollapsibleTabView
+        ref={tabs}
         navigationState={navigationState}
-        onIndexChange={setIndex}
+        onIndexChange={onIndexChange}
         renderHeader={() => <Header />}
         renderScene={renderScene}
         refreshing={refreshing}
@@ -205,10 +239,20 @@ const styles = StyleSheet.create({
   topBar: {
     height: 44,
     marginTop: 56,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
   topBarTitle: { fontSize: 17, fontWeight: '600', color: '#111' },
+  actions: { flexDirection: 'row', gap: 6 },
+  action: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#eef1f6',
+  },
+  actionLabel: { fontSize: 12, fontWeight: '600', color: '#334' },
   header: { backgroundColor: '#fff', paddingTop: 8, paddingBottom: 12 },
   avatar: {
     width: 72,

@@ -1,11 +1,6 @@
-import type { HostComponent, ViewProps } from 'react-native';
-import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent';
-import type {
-  DirectEventHandler,
-  Float,
-  Int32,
-  WithDefault,
-} from 'react-native/Libraries/Types/CodegenTypes';
+import type React from 'react';
+import type { CodegenTypes, HostComponent, ViewProps } from 'react-native';
+import { codegenNativeCommands, codegenNativeComponent } from 'react-native';
 
 /**
  * The native shell: an Instagram/Twitter-style "collapsing header over a tab
@@ -32,7 +27,7 @@ import type {
  */
 
 type PageSelectedEvent = Readonly<{
-  index: Int32;
+  index: CodegenTypes.Int32;
 }>;
 
 type CollapsedChangeEvent = Readonly<{
@@ -40,14 +35,14 @@ type CollapsedChangeEvent = Readonly<{
 }>;
 
 type PageRevealedEvent = Readonly<{
-  index: Int32;
+  index: CodegenTypes.Int32;
 }>;
 
 type PageScrollEvent = Readonly<{
   /** Left-hand page of the two currently on screen. */
-  position: Int32;
+  position: CodegenTypes.Int32;
   /** 0..1 — how far the swipe has travelled from `position` to the next page. */
-  offset: Float;
+  offset: CodegenTypes.Float;
 }>;
 
 // Codegen requires an empty event payload to be spelled exactly this way.
@@ -56,33 +51,33 @@ type RefreshEvent = Readonly<{}>;
 
 export interface NativeProps extends ViewProps {
   /** Measured height (dp) of the `tabs-header` child. */
-  headerHeight: Int32;
+  headerHeight: CodegenTypes.Int32;
   /** Measured height (dp) of the `tabs-tabbar` child. */
-  tabBarHeight: Int32;
+  tabBarHeight: CodegenTypes.Int32;
   /** Number of `tabs-page-<i>` children. */
-  pageCount: Int32;
+  pageCount: CodegenTypes.Int32;
   /** Active page; changing it animates the pager (tab press / jump). */
-  selectedIndex: Int32;
+  selectedIndex: CodegenTypes.Int32;
   /**
    * Header scroll offset (dp) past which `onCollapsedChange` flips to true —
    * lets a screen swap chrome without a per-frame JS event.
    */
-  collapseThreshold?: WithDefault<Int32, 0>;
+  collapseThreshold?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
   /**
    * 'classic': the header offset mirrors the active list's scroll position
    * (returns as the content nears the top). 'direction': the offset follows
    * the scroll DELTA — any upward scroll brings the header back, any
    * downward scroll hides it (home-feed feel).
    */
-  collapseMode?: WithDefault<string, 'classic'>;
-  swipeEnabled?: WithDefault<boolean, true>;
+  collapseMode?: CodegenTypes.WithDefault<string, 'classic'>;
+  swipeEnabled?: CodegenTypes.WithDefault<boolean, true>;
   /**
    * Whether the tab-bar band stays pinned at the top once the header is gone
    * (default true). Pass false and it collapses as part of the header — the
    * whole band, tabs included, scrolls away together — while pages still clear
    * it, which a tab strip rendered INSIDE the header cannot offer.
    */
-  pinTabBar?: WithDefault<boolean, true>;
+  pinTabBar?: CodegenTypes.WithDefault<boolean, true>;
   /**
    * Let a page whose content is too short to scroll the header away collapse
    * it anyway. Native gives that page exactly the missing scroll range (a
@@ -90,41 +85,69 @@ export interface NativeProps extends ViewProps {
    * `getMaxScrollY()` counts it), so an empty or one-item tab behaves like a
    * full one. Pages that can already hold the header get nothing.
    */
-  allowFullCollapse?: WithDefault<boolean, true>;
+  allowFullCollapse?: CodegenTypes.WithDefault<boolean, true>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
-  refreshing?: WithDefault<boolean, false>;
+  refreshing?: CodegenTypes.WithDefault<boolean, false>;
   /**
    * Whether the pull gesture arms at all. The JS side derives this from the
    * presence of `onRefresh` — without a handler nothing would ever clear the
    * spinner.
    */
-  refreshEnabled?: WithDefault<boolean, true>;
+  refreshEnabled?: CodegenTypes.WithDefault<boolean, true>;
   /**
    * Arms `onPageScroll`. That event is the one thing here that fires per
    * frame, so it is emitted only when something is listening — the JS side
    * derives this from the presence of a handler.
    */
-  pageScrollEnabled?: WithDefault<boolean, false>;
+  pageScrollEnabled?: CodegenTypes.WithDefault<boolean, false>;
 
-  onPageSelected?: DirectEventHandler<PageSelectedEvent>;
+  onPageSelected?: CodegenTypes.DirectEventHandler<PageSelectedEvent>;
   /**
    * A page became visible for the first time — fired as soon as ANY part of
    * it peeks in during a swipe, long before the swipe settles, so a lazy page
    * can mount while it is still sliding into view instead of after. Emitted
    * once per page (native dedupes), so this costs no per-frame JS work.
    */
-  onPageRevealed?: DirectEventHandler<PageRevealedEvent>;
+  onPageRevealed?: CodegenTypes.DirectEventHandler<PageRevealedEvent>;
   /**
    * The pager's live swipe position, per frame, while `pageScrollEnabled`.
    * Intended for a Reanimated `useEvent` worklet so a tab indicator can track
    * the finger without touching the JS thread; a plain JS handler works but
    * costs a JS call per frame.
    */
-  onPageScroll?: DirectEventHandler<PageScrollEvent>;
-  onCollapsedChange?: DirectEventHandler<CollapsedChangeEvent>;
-  onRefresh?: DirectEventHandler<RefreshEvent>;
+  onPageScroll?: CodegenTypes.DirectEventHandler<PageScrollEvent>;
+  onCollapsedChange?: CodegenTypes.DirectEventHandler<CollapsedChangeEvent>;
+  onRefresh?: CodegenTypes.DirectEventHandler<RefreshEvent>;
 }
 
-export default codegenNativeComponent<NativeProps>(
-  'NativeCollapsibleTabs',
-) as HostComponent<NativeProps>;
+type ComponentType = HostComponent<NativeProps>;
+
+/**
+ * Imperative surface. Every command goes THROUGH the collapse engine rather
+ * than around it: the header is derived from the active list's scroll
+ * position, so moving the header alone would desync it from the content.
+ * `scrollToTop` and `collapse` move the list and let the engine follow.
+ */
+interface NativeCommands {
+  /** Scroll a page's list to its top. `index` -1 = the active page. */
+  scrollToTop: (viewRef: React.ElementRef<ComponentType>, index: CodegenTypes.Int32, animated: boolean) => void;
+  /**
+   * Move the pager. Emits `onPageSelected` exactly like a swipe, so a
+   * controlled `index` stays the source of truth.
+   */
+  setIndex: (viewRef: React.ElementRef<ComponentType>, index: CodegenTypes.Int32, animated: boolean) => void;
+  /** Scroll the active list until the bands are fully collapsed. */
+  collapse: (viewRef: React.ElementRef<ComponentType>, animated: boolean) => void;
+  /**
+   * Bring the bands back. Classic mode: scrolls the active list to its top
+   * (the header mirrors it). Direction mode: animates the header alone,
+   * which that mode allows.
+   */
+  expand: (viewRef: React.ElementRef<ComponentType>, animated: boolean) => void;
+}
+
+export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
+  supportedCommands: ['scrollToTop', 'setIndex', 'collapse', 'expand'],
+});
+
+export default codegenNativeComponent<NativeProps>('NativeCollapsibleTabs') as ComponentType;

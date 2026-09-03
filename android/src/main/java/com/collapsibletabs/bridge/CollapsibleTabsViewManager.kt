@@ -2,6 +2,7 @@ package com.collapsibletabs.bridge
 
 import android.view.View
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
@@ -54,6 +55,28 @@ class CollapsibleTabsViewManager(
         view.onRefresh = {
             dispatcher()?.dispatchEvent(TabsRefreshEvent(surfaceId(), view.id))
         }
+    }
+
+    // Commands arrive by name; the codegen delegate parses the args and calls
+    // the typed methods below.
+    override fun receiveCommand(root: CollapsibleTabsHostView, commandId: String, args: ReadableArray?) {
+        delegate.receiveCommand(root, commandId, args)
+    }
+
+    override fun scrollToTop(view: CollapsibleTabsHostView, index: Int, animated: Boolean) {
+        view.scrollToTop(index, animated)
+    }
+
+    override fun setIndex(view: CollapsibleTabsHostView, index: Int, animated: Boolean) {
+        view.setIndex(index, animated)
+    }
+
+    override fun collapse(view: CollapsibleTabsHostView, animated: Boolean) {
+        view.collapse(animated)
+    }
+
+    override fun expand(view: CollapsibleTabsHostView, animated: Boolean) {
+        view.expand(animated)
     }
 
     override fun onAfterUpdateTransaction(view: CollapsibleTabsHostView) {

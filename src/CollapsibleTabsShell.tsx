@@ -1,6 +1,9 @@
 import React, {
+  forwardRef,
   useCallback,
+  useImperativeHandle,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -12,13 +15,41 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import NativeCollapsibleTabs from './NativeCollapsibleTabsNativeComponent';
+import NativeCollapsibleTabs, { Commands } from './NativeCollapsibleTabsNativeComponent';
 import { resolveHost, type PageScrollHandler } from './pageScroll';
 import { CollapsibleTabsContext, type CollapsibleTabsContextValue } from './context';
 
 export const SHELL_HEADER_ID = 'tabs-header';
 export const SHELL_TABBAR_ID = 'tabs-tabbar';
 export const shellPageId = (index: number) => `tabs-page-${index}`;
+
+/**
+ * Imperative handle exposed through `ref` on `CollapsibleTabView` and
+ * `CollapsibleTabsShell`. Every method goes THROUGH the collapse engine: the
+ * header is derived from the active list's scroll position, so these move
+ * the list and let the header follow rather than moving the header alone.
+ */
+export type CollapsibleTabsRef = {
+  /**
+   * Scroll a page's list to its top (default: the active page). The header
+   * comes back with the content. The "tap the active tab again" affordance.
+   */
+  scrollToTop: (options?: { index?: number; animated?: boolean }) => void;
+  /**
+   * Move the pager. Fires `onIndexChange` exactly like a swipe would, so a
+   * controlled `index` stays the source of truth — this exists for the
+   * `animated: false` jump, which a prop change cannot express.
+   */
+  setIndex: (index: number, options?: { animated?: boolean }) => void;
+  /** Scroll the active list until the bands are fully collapsed. */
+  collapse: (options?: { animated?: boolean }) => void;
+  /**
+   * Bring the bands back. Classic mode scrolls the active list to its top
+   * (the header mirrors it); direction mode animates the header alone,
+   * which that mode allows.
+   */
+  expand: (options?: { animated?: boolean }) => void;
+};
 
 export type CollapsibleTabsShellProps = {
   /** The collapsing header. */
@@ -58,7 +89,8 @@ export type CollapsibleTabsShellProps = {
  * `nativeID` and owns every scroll-driven pixel. Prefer `CollapsibleTabView`
  * unless you need this shape directly.
  */
-export function CollapsibleTabsShell({
+export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTabsShellProps>(
+  function CollapsibleTabsShell({
   header,
   tabBar,
   pages,
@@ -75,7 +107,7 @@ export function CollapsibleTabsShell({
   onPageScroll,
   lazy = true,
   style,
-}: CollapsibleTabsShellProps) {
+}, ref) {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(0);
 
@@ -170,12 +202,42 @@ export function CollapsibleTabsShell({
   // peer: plain function handlers, and no handler at all, use the plain host.
   const Host = resolveHost(NativeCollapsibleTabs, onPageScroll);
 
+  const hostRef = useRef<React.ElementRef<typeof NativeCollapsibleTabs>>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToTop: (options) => {
+        const host = hostRef.current;
+        if (host) {
+          Commands.scrollToTop(host, options?.index ?? -1, options?.animated ?? true);
+        }
+      },
+      setIndex: (nextIndex, options) => {
+        const host = hostRef.current;
+        if (host) {
+          Commands.setIndex(host, nextIndex, options?.animated ?? true);
+        }
+      },
+      collapse: (options) => {
+        const host = hostRef.current;
+        if (host) {
+          Commands.collapse(host, options?.animated ?? true);
+        }
+      },
+      expand: (options) => {
+        const host = hostRef.current;
+        if (host) {
+          Commands.expand(host, options?.animated ?? true);
+        }
+      },
+    }),
+    [],
+  );
+
   return (
     <CollapsibleTabsContext.Provider value={contextValue}>
-      {/* eslint-disable-next-line react-hooks/static-components -- resolveHost
-          caches the wrapped host at module level, so this identity IS stable
-          across renders; the rule cannot see through the cache. */}
       <Host
+        ref={hostRef}
         style={[styles.host, style]}
         headerHeight={headerHeight}
         tabBarHeight={tabBarHeight}
@@ -219,7 +281,8 @@ export function CollapsibleTabsShell({
       </Host>
     </CollapsibleTabsContext.Provider>
   );
-}
+  },
+);
 
 const styles = StyleSheet.create({
   host: {

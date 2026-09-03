@@ -1,7 +1,7 @@
-import React, { useMemo, type ReactNode } from 'react';
+import React, { forwardRef, useMemo, type ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { CollapsibleTabsShell } from './CollapsibleTabsShell';
+import { CollapsibleTabsShell, type CollapsibleTabsRef } from './CollapsibleTabsShell';
 import type { PageScrollHandler } from './pageScroll';
 import { TabBar, type TabBarProps } from './TabBar';
 import type { Route } from './types';
@@ -91,7 +91,8 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
  * `TabScrollView` / `TabFlatList`) so their content is padded under the
  * header and tab bar.
  */
-export function CollapsibleTabView<T extends Route = Route>({
+function CollapsibleTabViewInner<T extends Route>(
+  {
   navigationState,
   renderScene,
   onIndexChange,
@@ -109,7 +110,9 @@ export function CollapsibleTabView<T extends Route = Route>({
   allowFullCollapse = true,
   onPageScroll,
   style,
-}: CollapsibleTabViewProps<T>) {
+  }: CollapsibleTabViewProps<T>,
+  ref: React.ForwardedRef<CollapsibleTabsRef>,
+) {
   const { index, routes } = navigationState;
 
   const pages = useMemo(() => routes.map((route) => renderScene({ route })), [renderScene, routes]);
@@ -122,6 +125,7 @@ export function CollapsibleTabView<T extends Route = Route>({
 
   return (
     <CollapsibleTabsShell
+      ref={ref}
       header={renderHeader?.() ?? null}
       tabBar={tabBar}
       pages={pages}
@@ -141,3 +145,12 @@ export function CollapsibleTabView<T extends Route = Route>({
     />
   );
 }
+
+/**
+ * Collapsible tabs on the native shell, with a `react-native-tab-view`-like
+ * API. Accepts a `ref` of type `CollapsibleTabsRef` for the imperative
+ * surface (`scrollToTop`, `setIndex`, `collapse`, `expand`).
+ */
+export const CollapsibleTabView = forwardRef(CollapsibleTabViewInner) as <T extends Route = Route>(
+  props: CollapsibleTabViewProps<T> & { ref?: React.Ref<CollapsibleTabsRef> },
+) => React.ReactElement;

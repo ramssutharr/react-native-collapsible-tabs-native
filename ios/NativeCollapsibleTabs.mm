@@ -30,6 +30,10 @@
 - (void)handleScrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate;
 - (void)handleScrollViewWillBeginDragging:(UIScrollView *)scrollView;
 - (void)reset;
+- (void)scrollToTop:(NSInteger)page animated:(BOOL)animated;
+- (void)setIndex:(NSInteger)index animated:(BOOL)animated;
+- (void)collapse:(BOOL)animated;
+- (void)expand:(BOOL)animated;
 /// Given a mounted page root, returns the page's main vertical scroll view
 /// (and makes sure the host is listening to it). RN-specific, so it lives on
 /// the ObjC++ side.
@@ -228,6 +232,33 @@ using namespace facebook::react;
   }
   auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
   emitter->onRefresh({});
+}
+
+#pragma mark - Commands (imperative ref API)
+
+- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
+{
+  RCTNativeCollapsibleTabsHandleCommand(self, commandName, args);
+}
+
+- (void)scrollToTop:(NSInteger)index animated:(BOOL)animated
+{
+  [_content scrollToTop:index animated:animated];
+}
+
+- (void)setIndex:(NSInteger)index animated:(BOOL)animated
+{
+  [_content setIndex:index animated:animated];
+}
+
+- (void)collapse:(BOOL)animated
+{
+  [_content collapse:animated];
+}
+
+- (void)expand:(BOOL)animated
+{
+  [_content expand:animated];
 }
 
 #pragma mark - Props

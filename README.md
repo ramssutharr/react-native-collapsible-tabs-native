@@ -64,6 +64,8 @@ path instead of trying to keep up with it.
   view bounce on iOS, `SwipeRefreshLayout` on Android.
 - `onCollapsedChange` fires once per threshold crossing (not per frame) — use
   it to swap fixed chrome, e.g. reveal a title in your own top bar.
+- An imperative `ref` — `scrollToTop`, `setIndex`, `collapse`, `expand` —
+  for "tap the active tab again" and friends.
 - Presses under a finger that scrolled are cancelled correctly: a swipe that
   ends on a `Pressable` does not trigger it; a deliberate tap does.
 - A minimal default `TabBar` (equal-width labels + underline, colours via
@@ -75,7 +77,7 @@ path instead of trying to keep up with it.
 Read this before choosing the library — these are real constraints, not
 roadmap fine print:
 
-- **New Architecture (Fabric) only.** No Paper support. React Native ≥ 0.76
+- **New Architecture (Fabric) only.** No Paper support. React Native ≥ 0.80
   (developed and tested on RN 0.83).
 - The **list** scroll position is not exposed to JS at all. You get
   `onPageSelected`, `onPageRevealed` and the `onCollapsedChange` crossing —
@@ -121,8 +123,8 @@ yarn add react-native-collapsible-tabs-native
 cd ios && pod install
 ```
 
-Autolinked on both platforms. New Architecture must be enabled (default since
-RN 0.76).
+Autolinked on both platforms. Requires React Native ≥ 0.80 with the New
+Architecture enabled (the default since 0.76).
 
 The package ships untranspiled TypeScript (Metro handles it natively). **Jest
 does not** — if your tests import a screen that uses this package, allow it
@@ -220,6 +222,34 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `swipeEnabled` | `boolean` | default `true` |
 | `lazy` | `boolean` | default `true`; mount a page on first visit |
 | `style` | `ViewStyle` | shell container style |
+| `ref` | `CollapsibleTabsRef` | imperative surface — see below |
+
+### `ref` — imperative API
+
+```tsx
+const tabs = useRef<CollapsibleTabsRef>(null);
+
+<CollapsibleTabView ref={tabs} … />
+
+tabs.current?.scrollToTop();                     // active page → top, header comes back
+tabs.current?.scrollToTop({ index: 1, animated: false });
+tabs.current?.setIndex(2, { animated: false });  // jump without the pager animation
+tabs.current?.collapse();                        // header (and unpinned tab bar) away
+tabs.current?.expand();
+```
+
+| method | what it does |
+| --- | --- |
+| `scrollToTop({ index?, animated? })` | scroll a page's list to its top (default: the active page). The "tap the active tab again" affordance |
+| `setIndex(index, { animated? })` | move the pager; fires `onIndexChange` exactly like a swipe, so your controlled `index` stays the source of truth. Exists for the `animated: false` jump a prop change cannot express |
+| `collapse({ animated? })` | scroll the active list until the bands are fully collapsed |
+| `expand({ animated? })` | bring the bands back — `'classic'` scrolls the list to its top (the header mirrors it), `'direction'` animates the header alone, which that mode allows |
+
+Every method goes **through** the collapse engine: the header is derived from
+the active list's scroll position, so these move the list and let the header
+follow rather than moving the header on its own (which would leave a gap under
+the tab bar). `allowFullCollapse` guarantees even a short tab can honour
+`collapse()`.
 
 ### Tracking the swipe (interpolating a tab indicator)
 

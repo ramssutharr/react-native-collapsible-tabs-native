@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- New: an imperative `ref` (`CollapsibleTabsRef`) on `CollapsibleTabView`
+  and `CollapsibleTabsShell` — `scrollToTop({ index?, animated? })`,
+  `setIndex(index, { animated? })`, `collapse({ animated? })`,
+  `expand({ animated? })`. Fabric commands on both platforms. Every method
+  goes THROUGH the collapse engine: the header is derived from the active
+  list's position, so they move the list and let the header follow instead of
+  moving the header alone (which would leave a gap under the tab bar). In
+  `direction` mode `collapse` lands the bands exactly on the collapse point
+  once the list can hold it, and `expand` animates the header by itself,
+  which that mode allows. `setIndex` emits `onIndexChange` exactly like a
+  swipe, so a controlled index stays the source of truth.
+- **Breaking-ish:** React Native peer floor raised from 0.76 to **0.80**. The
+  spec now imports `codegenNativeComponent` / `codegenNativeCommands` and the
+  `CodegenTypes` from the `react-native` root — the deep
+  `react-native/Libraries/...` paths are deprecated as of 0.83 and warned on
+  every app launch. The root exports exist since 0.80.
+
 ## 0.5.2 — 2026-09-02
 
 - Fix (iOS): a vertical drag on the **tab strip** no longer slides it sideways.
