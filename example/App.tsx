@@ -8,6 +8,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
+  useEvent,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import {
   CollapsibleTabView,
   TabFlatList,
@@ -27,7 +35,14 @@ import {
  *   toggles for collapseMode / pinTabBar / allowFullCollapse
  * - the imperative ref API (scrollToTop / collapse / expand / setIndex) on
  *   the buttons in the top bar, and "tap the active tab again → top"
+ * - a header that reacts to its own collapse (avatar shrinks, bio fades)
+ *   from onHeaderOffsetChange — a Reanimated worklet, zero JS per frame
+ * - headerMinHeight: the chip row stays as a pinned strip ("keep chips")
  */
+
+/** Height of the chip row incl. its top padding — what `headerMinHeight`
+ *  keeps on screen when "keep chips" is on. */
+const CHIP_STRIP_HEIGHT = 56;
 
 const ROUTES = [
   { key: 'posts', title: 'Posts' },
@@ -61,15 +76,27 @@ function Row({ label }: { label: string }) {
   );
 }
 
-function Header() {
+function Header({ progress }: { progress: SharedValue<number> }) {
+  // progress = offset / collapsibleHeight, 0 open → 1 collapsed. Written on
+  // the UI thread by the shell's onHeaderOffsetChange worklet; these styles
+  // read it there too, so the header reacts without a JS frame.
+  const avatarStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(progress.value, [0, 1], [1, 0.55], Extrapolation.CLAMP) },
+    ],
+    opacity: interpolate(progress.value, [0, 0.9], [1, 0.35], Extrapolation.CLAMP),
+  }));
+  const bioStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.5], [1, 0], Extrapolation.CLAMP),
+  }));
   return (
     <View style={styles.header}>
-      <View style={styles.avatar} />
+      <Animated.View style={[styles.avatar, avatarStyle]} />
       <Text style={styles.name}>Collapsible Tabs</Text>
-      <Text style={styles.bio}>
+      <Animated.Text style={[styles.bio, bioStyle]}>
         Drag the header, fling the lists, swipe the tabs. The chip row below
         scrolls sideways; a vertical drag on it scrolls the page.
-      </Text>
+      </Animated.Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -118,6 +145,22 @@ export default function App() {
   const [direction, setDirection] = useState(false);
   const [pinTabBar, setPinTabBar] = useState(true);
   const [allowFullCollapse, setAllowFullCollapse] = useState(true);
+  const [keepChips, setKeepChips] = useState(false);
+
+  // The bands' collapse progress, straight from native, on the UI thread.
+  const progress = useSharedValue(0);
+  const onHeaderOffsetChange = useEvent<{
+    offset: number;
+    collapsibleHeight: number;
+    pull: number;
+  }>(
+    event => {
+      'worklet';
+      progress.value = event.offset / Math.max(1, event.collapsibleHeight);
+    },
+    ['topHeaderOffsetChange', 'onHeaderOffsetChange'],
+  );
+  const renderHeader = useCallback(() => <Header progress={progress} />, [progress]);
 
   const navigationState = useMemo(() => ({ index, routes: ROUTES }), [index]);
 
@@ -201,13 +244,15 @@ export default function App() {
         ref={tabs}
         navigationState={navigationState}
         onIndexChange={onIndexChange}
-        renderHeader={() => <Header />}
+        renderHeader={renderHeader}
         renderScene={renderScene}
         refreshing={refreshing}
         onRefresh={onRefresh}
         collapseMode={direction ? 'direction' : 'classic'}
         pinTabBar={pinTabBar}
         allowFullCollapse={allowFullCollapse}
+        headerMinHeight={keepChips ? CHIP_STRIP_HEIGHT : 0}
+        onHeaderOffsetChange={onHeaderOffsetChange}
         collapseThreshold={80}
         onCollapsedChange={setCollapsed}
         tabBarProps={{
@@ -229,6 +274,7 @@ export default function App() {
           value={allowFullCollapse}
           onChange={setAllowFullCollapse}
         />
+        <Toggle label="keep chips" value={keepChips} onChange={setKeepChips} />
       </View>
     </View>
   );
@@ -253,7 +299,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef1f6',
   },
   actionLabel: { fontSize: 12, fontWeight: '600', color: '#334' },
-  header: { backgroundColor: '#fff', paddingTop: 8, paddingBottom: 12 },
+  header: { backgroundColor: '#fff', paddingTop: 8 },
   avatar: {
     width: 72,
     height: 72,
@@ -269,7 +315,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   bio: { fontSize: 14, color: '#555', marginHorizontal: 16, marginTop: 6 },
-  chips: { paddingHorizontal: 12, paddingTop: 12, gap: 8 },
+  // Chip row = the header's bottom strip; its box must match CHIP_STRIP_HEIGHT
+  // (paddingTop 12 + chip 30 + paddingBottom 14 = 56) for "keep chips".
+  chips: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, gap: 8 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 7,

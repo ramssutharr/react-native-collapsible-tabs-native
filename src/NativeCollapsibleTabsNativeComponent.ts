@@ -45,6 +45,15 @@ type PageScrollEvent = Readonly<{
   offset: CodegenTypes.Float;
 }>;
 
+type HeaderOffsetChangeEvent = Readonly<{
+  /** How far the bands have travelled, dp, 0..collapsibleHeight. */
+  offset: CodegenTypes.Float;
+  /** The full travel: header height minus `headerMinHeight`, plus the tab bar when unpinned. */
+  collapsibleHeight: CodegenTypes.Float;
+  /** Over-drag past the top, dp (iOS bounce / pull-to-refresh); 0 on Android. */
+  pull: CodegenTypes.Float;
+}>;
+
 // Codegen requires an empty event payload to be spelled exactly this way.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type RefreshEvent = Readonly<{}>;
@@ -86,6 +95,13 @@ export interface NativeProps extends ViewProps {
    * full one. Pages that can already hold the header get nothing.
    */
   allowFullCollapse?: CodegenTypes.WithDefault<boolean, true>;
+  /**
+   * Bottom strip of the header (dp) that stays on screen above the tab bar
+   * instead of scrolling away — a search bar, a filter row. The bands then
+   * travel `headerHeight - headerMinHeight`; the tab bar necessarily stays
+   * visible too, so `pinTabBar={false}` has no effect while this is > 0.
+   */
+  headerMinHeight?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
   refreshing?: CodegenTypes.WithDefault<boolean, false>;
   /**
@@ -100,6 +116,8 @@ export interface NativeProps extends ViewProps {
    * derives this from the presence of a handler.
    */
   pageScrollEnabled?: CodegenTypes.WithDefault<boolean, false>;
+  /** Arms `onHeaderOffsetChange` (per frame while the bands move); derived from the handler's presence. */
+  headerOffsetEnabled?: CodegenTypes.WithDefault<boolean, false>;
 
   onPageSelected?: CodegenTypes.DirectEventHandler<PageSelectedEvent>;
   /**
@@ -117,6 +135,13 @@ export interface NativeProps extends ViewProps {
    */
   onPageScroll?: CodegenTypes.DirectEventHandler<PageScrollEvent>;
   onCollapsedChange?: CodegenTypes.DirectEventHandler<CollapsedChangeEvent>;
+  /**
+   * The bands' live offset, per frame while they move, while
+   * `headerOffsetEnabled`. Intended for a Reanimated `useEvent` worklet so a
+   * header can shrink its avatar, fade a title, parallax a cover — on the UI
+   * thread, without touching JS. Emitted only when the value changes.
+   */
+  onHeaderOffsetChange?: CodegenTypes.DirectEventHandler<HeaderOffsetChangeEvent>;
   onRefresh?: CodegenTypes.DirectEventHandler<RefreshEvent>;
 }
 

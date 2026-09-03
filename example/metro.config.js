@@ -11,6 +11,14 @@ const root = path.resolve(__dirname, '..');
 const config = {
   watchFolders: [root],
   resolver: {
+    // Modules required FROM the library's source (../src) must resolve from
+    // this app's node_modules — e.g. the library's optional
+    // `require('react-native-reanimated')`. Metro's default lookup walks up
+    // from ../src and never reaches example/node_modules; and because that
+    // require is inside a try/catch, Metro treats it as optional and the
+    // bundle builds anyway — the library then silently falls back to the
+    // plain host and worklet handlers stop working.
+    nodeModulesPaths: [path.join(__dirname, 'node_modules')],
     extraNodeModules: {
       'react-native-collapsible-tabs-native': root,
       react: path.join(__dirname, 'node_modules', 'react'),

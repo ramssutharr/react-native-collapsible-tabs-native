@@ -8,4 +8,4 @@ export type { TabBarProps } from './TabBar';
 export { useCollapsibleTabs, CollapsibleTabsContext } from './context';
 export type { CollapsibleTabsContextValue } from './context';
 export type { Route } from './types';
-export type { PageScrollHandler } from './pageScroll';
+export type { HeaderOffsetHandler, PageScrollHandler } from './pageScroll';

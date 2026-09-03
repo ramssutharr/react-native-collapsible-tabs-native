@@ -52,6 +52,11 @@ class CollapsibleTabsViewManager(
                 TabsCollapsedChangeEvent(surfaceId(), view.id, collapsed),
             )
         }
+        view.onHeaderOffsetChange = { offset, collapsibleHeight, pull ->
+            dispatcher()?.dispatchEvent(
+                TabsHeaderOffsetChangeEvent(surfaceId(), view.id, offset, collapsibleHeight, pull),
+            )
+        }
         view.onRefresh = {
             dispatcher()?.dispatchEvent(TabsRefreshEvent(surfaceId(), view.id))
         }
@@ -90,6 +95,7 @@ class CollapsibleTabsViewManager(
             TabsPageRevealedEvent.NAME to mapOf("registrationName" to "onPageRevealed"),
             TabsPageScrollEvent.NAME to mapOf("registrationName" to "onPageScroll"),
             TabsCollapsedChangeEvent.NAME to mapOf("registrationName" to "onCollapsedChange"),
+            TabsHeaderOffsetChangeEvent.NAME to mapOf("registrationName" to "onHeaderOffsetChange"),
             TabsRefreshEvent.NAME to mapOf("registrationName" to "onRefresh"),
         )
 
@@ -138,6 +144,16 @@ class CollapsibleTabsViewManager(
     @ReactProp(name = "pinTabBar")
     override fun setPinTabBar(view: CollapsibleTabsHostView, value: Boolean) {
         view.setPinTabBar(value)
+    }
+
+    @ReactProp(name = "headerMinHeight")
+    override fun setHeaderMinHeight(view: CollapsibleTabsHostView, value: Int) {
+        view.setHeaderMinHeightDp(value)
+    }
+
+    @ReactProp(name = "headerOffsetEnabled")
+    override fun setHeaderOffsetEnabled(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setHeaderOffsetEnabled(value)
     }
 
     @ReactProp(name = "pageScrollEnabled")

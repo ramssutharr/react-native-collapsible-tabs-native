@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+- New: `onHeaderOffsetChange` — the bands' live offset
+  (`{ offset, collapsibleHeight, pull }`, dp) per frame while they move, on
+  both platforms. Same contract as `onPageScroll`: pass a Reanimated
+  `useEvent` worklet and it is read on the UI thread with no per-frame JS;
+  a plain function works but costs a JS call per frame. Armed only while a
+  handler is set, emitted only on change, and the current value is emitted
+  once when a handler is attached late. Unlocks headers that react to their
+  own collapse — avatar shrink, title fade, cover parallax — and list
+  section headers that pin below the bands. `pull` is the iOS over-drag
+  (0 on Android, where `SwipeRefreshLayout` owns it).
+- New: `headerMinHeight` — the bottom strip of the header that stays pinned
+  above the tab bar instead of scrolling away (a search bar, a filter row).
+  The bands then travel `headerHeight - headerMinHeight`; the tab bar
+  necessarily stays visible too, so `pinTabBar={false}` is ignored while it
+  is > 0. `allowFullCollapse` slack and the collapse threshold follow the
+  shorter travel.
+- Fix: when a Reanimated `useEvent` handler is passed but
+  `react-native-reanimated` cannot be loaded, the shell now warns in
+  development and leaves the handler (and its native event) off, instead of
+  passing the raw handler object to the native prop — which React rejected
+  with "Expected `onHeaderOffsetChange` listener to be a function". Seen in
+  the example, where Metro resolved the library's optional require from the
+  repo root, never reaching `example/node_modules` (fixed there with
+  `resolver.nodeModulesPaths`).
+- Example: Reanimated added; the header's avatar shrinks and the bio fades
+  with the collapse, and a "keep chips" toggle pins the chip row via
+  `headerMinHeight`.
+
 ## 0.6.0 — 2026-09-03
 
 - New: an imperative `ref` (`CollapsibleTabsRef`) on `CollapsibleTabView`

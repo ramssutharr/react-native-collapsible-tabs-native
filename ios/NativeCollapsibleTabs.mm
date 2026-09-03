@@ -22,6 +22,8 @@
 - (void)setAllowFullCollapse:(BOOL)allow;
 - (void)setPageScrollEnabled:(BOOL)enabled;
 - (void)setPinTabBar:(BOOL)pinned;
+- (void)setHeaderMinHeight:(CGFloat)height;
+- (void)setHeaderOffsetEnabled:(BOOL)enabled;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
@@ -42,6 +44,7 @@
 @property (nonatomic, copy, nullable) void (^onPageRevealed)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onPageScroll)(NSInteger position, CGFloat offset);
 @property (nonatomic, copy, nullable) void (^onCollapsedChange)(BOOL collapsed);
+@property (nonatomic, copy, nullable) void (^onHeaderOffsetChange)(CGFloat offset, CGFloat collapsibleHeight, CGFloat pull);
 @property (nonatomic, copy, nullable) void (^onRefresh)(void);
 /// Cancels React's in-flight JS touches (so a Pressable under the finger does
 /// not fire when a scroll/drag starts). RN-specific, provided by the host.
@@ -90,6 +93,9 @@ using namespace facebook::react;
     };
     _content.onCollapsedChange = ^(BOOL collapsed) {
       [weakSelf emitCollapsedChange:collapsed];
+    };
+    _content.onHeaderOffsetChange = ^(CGFloat offset, CGFloat collapsibleHeight, CGFloat pull) {
+      [weakSelf emitHeaderOffset:offset collapsible:collapsibleHeight pull:pull];
     };
     _content.onRefresh = ^{
       [weakSelf emitRefresh];
@@ -225,6 +231,17 @@ using namespace facebook::react;
   emitter->onCollapsedChange({.collapsed = static_cast<bool>(collapsed)});
 }
 
+- (void)emitHeaderOffset:(CGFloat)offset collapsible:(CGFloat)collapsibleHeight pull:(CGFloat)pull
+{
+  if (_eventEmitter == nullptr) {
+    return;
+  }
+  auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
+  emitter->onHeaderOffsetChange({.offset = static_cast<Float>(offset),
+                                 .collapsibleHeight = static_cast<Float>(collapsibleHeight),
+                                 .pull = static_cast<Float>(pull)});
+}
+
 - (void)emitRefresh
 {
   if (_eventEmitter == nullptr) {
@@ -300,6 +317,12 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.pinTabBar != previousProps.pinTabBar) {
     [_content setPinTabBar:newProps.pinTabBar];
+  }
+  if (oldProps == nullptr || newProps.headerMinHeight != previousProps.headerMinHeight) {
+    [_content setHeaderMinHeight:newProps.headerMinHeight];
+  }
+  if (oldProps == nullptr || newProps.headerOffsetEnabled != previousProps.headerOffsetEnabled) {
+    [_content setHeaderOffsetEnabled:newProps.headerOffsetEnabled];
   }
   if (oldProps == nullptr || newProps.pageScrollEnabled != previousProps.pageScrollEnabled) {
     [_content setPageScrollEnabled:newProps.pageScrollEnabled];

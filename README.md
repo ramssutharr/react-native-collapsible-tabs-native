@@ -66,6 +66,9 @@ path instead of trying to keep up with it.
   it to swap fixed chrome, e.g. reveal a title in your own top bar.
 - An imperative `ref` — `scrollToTop`, `setIndex`, `collapse`, `expand` —
   for "tap the active tab again" and friends.
+- A header that reacts to its own collapse (`onHeaderOffsetChange` as a
+  Reanimated worklet — avatar shrink, title fade, parallax, on the UI
+  thread), and a pinned bottom strip (`headerMinHeight`).
 - Presses under a finger that scrolled are cancelled correctly: a swipe that
   ends on a `Pressable` does not trigger it; a deliberate tap does.
 - A minimal default `TabBar` (equal-width labels + underline, colours via
@@ -215,6 +218,8 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
+| `headerMinHeight` | `number` (dp) | default `0`. Bottom strip of the header that stays pinned above the tab bar (a search bar, a filter row) instead of scrolling away. The tab bar necessarily stays too, so `pinTabBar={false}` is ignored while this is > 0 |
+| `onHeaderOffsetChange` | Reanimated `useEvent` handler, or `(e) => void` | the bands' live offset while they move — `{ offset, collapsibleHeight, pull }` in dp; `offset / collapsibleHeight` is the 0..1 progress. For a header that reacts to its own collapse (avatar shrink, title fade, cover parallax). Same contract as `onPageScroll`: a worklet reads it on the UI thread; a plain function costs a JS call per frame. Emitted only while a handler is set, and only on change |
 | `pinTabBar` | `boolean` | default **`true`**: the tab bar stays pinned at the top once the header is gone. `false`: the whole band, tabs included, collapses as part of the header |
 | `allowFullCollapse` | `boolean` | default **`true`**. Tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks; tabs with enough content are untouched. `false` restores the old behaviour |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
@@ -275,6 +280,28 @@ const onPageScroll = useEvent<{ position: number; offset: number }>(
 Your tab bar then interpolates a single indicator between measured tab
 positions from `progress`. Reanimated is an optional peer dependency: it is
 only required (and only imported) if you pass a worklet handler.
+
+### Reacting to the collapse (avatar shrink, parallax…)
+
+```tsx
+const progress = useSharedValue(0); // 0 open → 1 collapsed
+const onHeaderOffsetChange = useEvent<{ offset: number; collapsibleHeight: number; pull: number }>(
+  e => {
+    'worklet';
+    progress.value = e.offset / Math.max(1, e.collapsibleHeight);
+  },
+  ['topHeaderOffsetChange', 'onHeaderOffsetChange'],
+);
+
+<CollapsibleTabView onHeaderOffsetChange={onHeaderOffsetChange} renderHeader={() => <Header progress={progress} />} … />
+
+// inside Header:
+const avatarStyle = useAnimatedStyle(() => ({
+  transform: [{ scale: interpolate(progress.value, [0, 1], [1, 0.55], Extrapolation.CLAMP) }],
+}));
+```
+
+The shell writes the value from the same native callback that moves the bands, and the worklet styles read it on the UI thread — the header reacts without a JS frame. `pull` is the over-drag past the top on iOS (0 on Android, where the refresh layout owns it), for stretch effects.
 
 ### `createTabList(List)`
 

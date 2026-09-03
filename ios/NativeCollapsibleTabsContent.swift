@@ -34,6 +34,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// Live swipe position, per frame, while `pageScrollEnabled`.
   @objc public var onPageScroll: ((Int, CGFloat) -> Void)?
   @objc public var onCollapsedChange: ((Bool) -> Void)?
+  /// The bands' live offset (offset, collapsibleHeight, pull), while
+  /// `headerOffsetEnabled`; emitted only when the value changes.
+  @objc public var onHeaderOffsetChange: ((CGFloat, CGFloat, CGFloat) -> Void)?
   @objc public var onRefresh: (() -> Void)?
   /// Provided by the host: cancels React's in-flight JS touches so a press
   /// under the finger never fires once a scroll or drag has begun.
@@ -63,11 +66,18 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var swipeEnabled = true
   /// False: the tab-bar band collapses with the header instead of pinning.
   private var pinTabBar = true
+  /// Bottom strip of the header that stays on screen above the tab bar.
+  private var headerMinHeight: CGFloat = 0
+  /// Arms the per-frame `onHeaderOffsetChange`; off unless something listens.
+  private var headerOffsetEnabled = false
 
-  /// How far the bands travel before they are gone. The tab bar is part of
-  /// that distance only when it is not pinned.
+  /// How far the bands travel before they are gone. A minimum keeps the
+  /// header's bottom strip on screen — and with it the tab bar below, so an
+  /// unpinned tab bar cannot collapse either. Otherwise the tab bar is part
+  /// of the distance only when it is not pinned.
   private var collapsibleHeight: CGFloat {
-    headerHeight + (pinTabBar ? 0 : tabBarHeight)
+    if headerMinHeight > 0 { return max(0, headerHeight - headerMinHeight) }
+    return headerHeight + (pinTabBar ? 0 : tabBarHeight)
   }
   /// Give short pages the scroll range they lack so the header can always be
   /// collapsed (see `applyCollapseSlack`). On by default: a tab you cannot
@@ -205,6 +215,21 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public func setPageScrollEnabled(_ value: Bool) {
     pageScrollEnabled = value
+  }
+
+  @objc public func setHeaderMinHeight(_ value: CGFloat) {
+    guard value != headerMinHeight else { return }
+    headerMinHeight = value
+    setNeedsLayout()
+    resyncOffsetToActive()
+    // The travel changed, so every page's slack did too.
+    applyCollapseSlackToAll()
+  }
+
+  @objc public func setHeaderOffsetEnabled(_ value: Bool) {
+    headerOffsetEnabled = value
+    // A listener arriving late still needs the current value once.
+    if value { emitHeaderOffset(force: true) }
   }
 
   @objc public func setAllowFullCollapse(_ value: Bool) {
@@ -410,6 +435,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     coRecognisingStrips.removeAllObjects()
     bandPanIntent = nil
     pendingCollapse = false
+    lastEmittedOffset = -1
+    lastEmittedPull = -1
     fling?.stop()
     fling = nil
     refreshing = false
@@ -550,6 +577,19 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       spinner.alpha = refreshEnabled ? min(1, pull / Self.refreshThreshold) : 0
       spinner.transform = CGAffineTransform(rotationAngle: pull / Self.refreshThreshold * .pi)
     }
+    emitHeaderOffset()
+  }
+
+  private var lastEmittedOffset: CGFloat = -1
+  private var lastEmittedPull: CGFloat = -1
+
+  /// One event per CHANGE of the band position, never per frame at rest.
+  private func emitHeaderOffset(force: Bool = false) {
+    guard headerOffsetEnabled else { return }
+    guard force || headerOffset != lastEmittedOffset || pull != lastEmittedPull else { return }
+    lastEmittedOffset = headerOffset
+    lastEmittedPull = pull
+    onHeaderOffsetChange?(headerOffset, collapsibleHeight, pull)
   }
 
 

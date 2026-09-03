@@ -2,7 +2,7 @@ import React, { forwardRef, useMemo, type ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { CollapsibleTabsShell, type CollapsibleTabsRef } from './CollapsibleTabsShell';
-import type { PageScrollHandler } from './pageScroll';
+import type { HeaderOffsetHandler, PageScrollHandler } from './pageScroll';
 import { TabBar, type TabBarProps } from './TabBar';
 import type { Route } from './types';
 
@@ -80,6 +80,30 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
    * ```
    */
   onPageScroll?: PageScrollHandler;
+  /**
+   * Bottom strip of the header (dp) that stays on screen above the tab bar
+   * instead of scrolling away — a search bar, a filter row. The tab bar then
+   * necessarily stays visible too, so `pinTabBar={false}` is ignored while
+   * this is > 0. Default 0.
+   */
+  headerMinHeight?: number;
+  /**
+   * The bands' live offset, per frame while they move — for a header that
+   * reacts to its own collapse (avatar shrink, title fade, cover parallax).
+   * Same contract as `onPageScroll`: pass a Reanimated `useEvent` worklet and
+   * it is read on the UI thread; a plain function runs on the JS thread every
+   * frame. `offset / collapsibleHeight` is the 0..1 progress; `pull` is the
+   * over-drag past the top (iOS). Emitted only while a handler is set.
+   *
+   * ```tsx
+   * const progress = useSharedValue(0);
+   * const onHeaderOffsetChange = useEvent(e => {
+   *   'worklet';
+   *   progress.value = e.offset / Math.max(1, e.collapsibleHeight);
+   * }, ['topHeaderOffsetChange']);
+   * ```
+   */
+  onHeaderOffsetChange?: HeaderOffsetHandler;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -109,6 +133,8 @@ function CollapsibleTabViewInner<T extends Route>(
   collapseMode = 'classic',
   allowFullCollapse = true,
   onPageScroll,
+  headerMinHeight = 0,
+  onHeaderOffsetChange,
   style,
   }: CollapsibleTabViewProps<T>,
   ref: React.ForwardedRef<CollapsibleTabsRef>,
@@ -138,6 +164,8 @@ function CollapsibleTabViewInner<T extends Route>(
       pinTabBar={pinTabBar}
       allowFullCollapse={allowFullCollapse}
       onPageScroll={onPageScroll}
+      headerMinHeight={headerMinHeight}
+      onHeaderOffsetChange={onHeaderOffsetChange}
       refreshing={refreshing}
       onRefresh={onRefresh}
       lazy={lazy}

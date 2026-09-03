@@ -58,6 +58,29 @@ class TabsPageScrollEvent(
     companion object { const val NAME = "topPageScroll" }
 }
 
+/**
+ * The bands' live offset (dp). Per frame while they move, only while
+ * `headerOffsetEnabled`, and only on change — so a header can react to its
+ * own collapse (avatar shrink, title fade) and nothing else pays for it.
+ */
+class TabsHeaderOffsetChangeEvent(
+    surfaceId: Int,
+    viewTag: Int,
+    private val offset: Float,
+    private val collapsibleHeight: Float,
+    private val pull: Float,
+) : Event<TabsHeaderOffsetChangeEvent>(surfaceId, viewTag) {
+    override fun getEventName(): String = NAME
+    override fun canCoalesce(): Boolean = true
+    override fun getEventData(): WritableMap = Arguments.createMap().apply {
+        putDouble("offset", offset.toDouble())
+        putDouble("collapsibleHeight", collapsibleHeight.toDouble())
+        putDouble("pull", pull.toDouble())
+    }
+
+    companion object { const val NAME = "topHeaderOffsetChange" }
+}
+
 /** The user pulled to refresh from the top of the container. */
 class TabsRefreshEvent(surfaceId: Int, viewTag: Int) :
     Event<TabsRefreshEvent>(surfaceId, viewTag) {

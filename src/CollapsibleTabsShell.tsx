@@ -16,7 +16,12 @@ import {
 } from 'react-native';
 
 import NativeCollapsibleTabs, { Commands } from './NativeCollapsibleTabsNativeComponent';
-import { resolveHost, type PageScrollHandler } from './pageScroll';
+import {
+  isWorkletHandler,
+  resolveHost,
+  type HeaderOffsetHandler,
+  type PageScrollHandler,
+} from './pageScroll';
 import { CollapsibleTabsContext, type CollapsibleTabsContextValue } from './context';
 
 export const SHELL_HEADER_ID = 'tabs-header';
@@ -74,6 +79,10 @@ export type CollapsibleTabsShellProps = {
   onRefresh?: () => void;
   /** See CollapsibleTabView's `onPageScroll`. */
   onPageScroll?: PageScrollHandler;
+  /** See CollapsibleTabView's `headerMinHeight`. Default 0. */
+  headerMinHeight?: number;
+  /** See CollapsibleTabView's `onHeaderOffsetChange`. */
+  onHeaderOffsetChange?: HeaderOffsetHandler;
   /**
    * Mount a page's content only once its tab has been visited (the wrapper
    * view is always mounted so the native pager has a stable child per tab).
@@ -105,6 +114,8 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
   refreshing = false,
   onRefresh,
   onPageScroll,
+  headerMinHeight = 0,
+  onHeaderOffsetChange,
   lazy = true,
   style,
 }, ref) {
@@ -208,7 +219,15 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
   // Reanimated itself created, so the host is swapped for a wrapped one when
   // (and only when) such a handler is passed. Reanimated stays an optional
   // peer: plain function handlers, and no handler at all, use the plain host.
-  const Host = resolveHost(NativeCollapsibleTabs, onPageScroll);
+  const Host = resolveHost(NativeCollapsibleTabs, [onPageScroll, onHeaderOffsetChange]);
+  // A worklet handler is only usable through the wrapped host. If the wrap
+  // failed (Reanimated missing), drop it rather than hand React a listener
+  // object — and leave the native event disarmed, since nobody is listening.
+  const wrapped = Host !== NativeCollapsibleTabs;
+  const usable = <H,>(handler: H | undefined): H | undefined =>
+    wrapped || !isWorkletHandler(handler as never) ? handler : undefined;
+  const pageScroll = usable(onPageScroll);
+  const headerOffset = usable(onHeaderOffsetChange);
 
   const hostRef = useRef<React.ElementRef<typeof NativeCollapsibleTabs>>(null);
   useImperativeHandle(
@@ -258,8 +277,11 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
         allowFullCollapse={allowFullCollapse}
         refreshing={refreshing}
         refreshEnabled={onRefresh != null}
-        pageScrollEnabled={onPageScroll != null}
-        onPageScroll={onPageScroll}
+        pageScrollEnabled={pageScroll != null}
+        onPageScroll={pageScroll}
+        headerMinHeight={Math.round(headerMinHeight)}
+        headerOffsetEnabled={headerOffset != null}
+        onHeaderOffsetChange={headerOffset}
         onPageSelected={handlePageSelected}
         onPageRevealed={handlePageRevealed}
         onCollapsedChange={handleCollapsedChange}

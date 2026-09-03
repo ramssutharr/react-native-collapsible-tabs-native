@@ -58,6 +58,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     /** Live swipe position, per frame, while [pageScrollEnabled]. */
     var onPageScroll: ((position: Int, offset: Float) -> Unit)? = null
     var onCollapsedChange: ((collapsed: Boolean) -> Unit)? = null
+    /** The bands' live offset in dp (offset, collapsibleHeight, pull), while
+     *  [headerOffsetEnabled]; emitted only when the value changes. */
+    var onHeaderOffsetChange: ((offsetDp: Float, collapsibleHeightDp: Float, pullDp: Float) -> Unit)? = null
     var onRefresh: (() -> Unit)? = null
 
     private val density = context.resources.displayMetrics.density
@@ -92,6 +95,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var swipeEnabled = true
     /** False: the tab-bar band collapses with the header instead of pinning. */
     private var pinTabBar = true
+    /** Bottom strip of the header that stays on screen above the tab bar. */
+    private var headerMinHeightPx = 0
+    /** Arms the per-frame [onHeaderOffsetChange]; off unless something listens. */
+    private var headerOffsetEnabled = false
     /** Give short pages the scroll range they lack (see [applyCollapseSlack]).
      *  On by default: a tab you cannot scroll is a tab whose header you cannot
      *  collapse, which reads as broken. */
@@ -103,11 +110,14 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var pendingSelectedIndex = -1
 
     /**
-     * How far the bands travel before they are gone. The tab bar is part of
-     * that distance only when it is not pinned.
+     * How far the bands travel before they are gone. A minimum keeps the
+     * header's bottom strip on screen — and with it the tab bar below, so an
+     * unpinned tab bar cannot collapse either. Otherwise the tab bar is part
+     * of the distance only when it is not pinned.
      */
     private val collapsibleHeightPx: Int
-        get() = headerHeightPx + (if (pinTabBar) 0 else tabBarHeightPx)
+        get() = if (headerMinHeightPx > 0) (headerHeightPx - headerMinHeightPx).coerceAtLeast(0)
+                else headerHeightPx + (if (pinTabBar) 0 else tabBarHeightPx)
 
     /** Current header offset, 0..collapsibleHeightPx. */
     private var headerOffset = 0
@@ -220,6 +230,22 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     fun setPageScrollEnabled(value: Boolean) {
         pageScrollEnabled = value
+    }
+
+    fun setHeaderMinHeightDp(dp: Int) {
+        val px = (dp * density).toInt()
+        if (px == headerMinHeightPx) return
+        headerMinHeightPx = px
+        resyncOffsetToActive()
+        // The travel changed, so every page's slack did too.
+        applyCollapseSlackToAll()
+        requestLayout()
+    }
+
+    fun setHeaderOffsetEnabled(value: Boolean) {
+        headerOffsetEnabled = value
+        // A listener arriving late still needs the current value once.
+        if (value) emitHeaderOffset(force = true)
     }
 
     fun setAllowFullCollapse(value: Boolean) {
@@ -910,6 +936,19 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         headerSlot.translationY = ty
         tabBarSlot.translationY = ty
         updateCollapsed()
+        emitHeaderOffset()
+    }
+
+    private var lastEmittedOffset = -1
+
+    /** One event per CHANGE of the band position, never per frame at rest.
+     *  Android has no band pull (SwipeRefreshLayout owns the over-drag), so
+     *  `pull` is always 0 here. */
+    private fun emitHeaderOffset(force: Boolean = false) {
+        if (!headerOffsetEnabled) return
+        if (!force && headerOffset == lastEmittedOffset) return
+        lastEmittedOffset = headerOffset
+        onHeaderOffsetChange?.invoke(headerOffset / density, collapsibleHeightPx / density, 0f)
     }
 
     private fun updateCollapsed() {
