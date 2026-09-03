@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-09-03
 
 - New: an imperative `ref` (`CollapsibleTabsRef`) on `CollapsibleTabView`
   and `CollapsibleTabsShell` — `scrollToTop({ index?, animated? })`,
