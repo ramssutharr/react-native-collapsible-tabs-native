@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-09-03
 
 - New: `onHeaderOffsetChange` — the bands' live offset
   (`{ offset, collapsibleHeight, pull }`, dp) per frame while they move, on
