@@ -10,6 +10,7 @@ import React, {
 import {
   StyleSheet,
   View,
+  type ColorValue,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
@@ -77,6 +78,13 @@ export type CollapsibleTabsShellProps = {
   allowFullCollapse?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** See CollapsibleTabView's `refresh*` props. */
+  refreshThreshold?: number;
+  refreshIndicatorOffset?: number;
+  refreshTintColor?: ColorValue;
+  refreshBackgroundColor?: ColorValue;
+  refreshIndicatorSize?: 'default' | 'large';
+  refreshIndicatorHidden?: boolean;
   /** See CollapsibleTabView's `onPageScroll`. */
   onPageScroll?: PageScrollHandler;
   /** See CollapsibleTabView's `headerMinHeight`. Default 0. */
@@ -113,6 +121,12 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
   allowFullCollapse = true,
   refreshing = false,
   onRefresh,
+  refreshThreshold = 70,
+  refreshIndicatorOffset = 60,
+  refreshTintColor,
+  refreshBackgroundColor,
+  refreshIndicatorSize = 'default',
+  refreshIndicatorHidden = false,
   onPageScroll,
   headerMinHeight = 0,
   onHeaderOffsetChange,
@@ -277,6 +291,12 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
         allowFullCollapse={allowFullCollapse}
         refreshing={refreshing}
         refreshEnabled={onRefresh != null}
+        refreshThreshold={Math.round(refreshThreshold)}
+        refreshIndicatorOffset={Math.round(refreshIndicatorOffset)}
+        refreshTintColor={refreshTintColor}
+        refreshBackgroundColor={refreshBackgroundColor}
+        refreshIndicatorSize={refreshIndicatorSize}
+        refreshIndicatorHidden={refreshIndicatorHidden}
         pageScrollEnabled={pageScroll != null}
         onPageScroll={pageScroll}
         headerMinHeight={Math.round(headerMinHeight)}

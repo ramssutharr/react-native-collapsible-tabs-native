@@ -171,6 +171,36 @@ class CollapsibleTabsViewManager(
         view.setRefreshEnabled(value)
     }
 
+    @ReactProp(name = "refreshThreshold")
+    override fun setRefreshThreshold(view: CollapsibleTabsHostView, value: Int) {
+        view.setRefreshThresholdDp(value)
+    }
+
+    @ReactProp(name = "refreshIndicatorOffset")
+    override fun setRefreshIndicatorOffset(view: CollapsibleTabsHostView, value: Int) {
+        view.setRefreshIndicatorOffsetDp(value)
+    }
+
+    @ReactProp(name = "refreshTintColor", customType = "Color")
+    override fun setRefreshTintColor(view: CollapsibleTabsHostView, value: Int?) {
+        view.setRefreshTintColor(value)
+    }
+
+    @ReactProp(name = "refreshBackgroundColor", customType = "Color")
+    override fun setRefreshBackgroundColor(view: CollapsibleTabsHostView, value: Int?) {
+        view.setRefreshBackgroundColor(value)
+    }
+
+    @ReactProp(name = "refreshIndicatorSize")
+    override fun setRefreshIndicatorSize(view: CollapsibleTabsHostView, value: String?) {
+        view.setRefreshIndicatorSize(value ?: "default")
+    }
+
+    @ReactProp(name = "refreshIndicatorHidden")
+    override fun setRefreshIndicatorHidden(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setRefreshIndicatorHidden(value)
+    }
+
     // ── RN child mounting ──
     // Every RN child is re-parented into a native slot (header band, tab-bar
     // band, or a pager page) keyed by its nativeID. The ViewGroupManager child

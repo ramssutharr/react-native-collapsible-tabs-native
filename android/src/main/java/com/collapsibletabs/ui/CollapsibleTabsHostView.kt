@@ -2,6 +2,7 @@ package com.collapsibletabs.ui
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Color
 import android.util.Log
 import android.util.SparseArray
 import android.util.SparseIntArray
@@ -320,6 +321,55 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     fun setRefreshing(value: Boolean) {
         if (refreshLayout.isRefreshing != value) refreshLayout.isRefreshing = value
+    }
+
+    // MARK: - Refresh customisation
+
+    private var refreshTint: Int? = null
+    private var refreshBackground: Int? = null
+    private var refreshHidden = false
+
+    fun setRefreshThresholdDp(dp: Int) {
+        refreshLayout.setDistanceToTriggerSync((dp * density).toInt().coerceAtLeast(1))
+    }
+
+    fun setRefreshIndicatorOffsetDp(dp: Int) {
+        refreshLayout.setProgressViewEndTarget(false, (dp * density).toInt().coerceAtLeast(0))
+    }
+
+    fun setRefreshTintColor(color: Int?) {
+        refreshTint = color
+        applyRefreshColors()
+    }
+
+    fun setRefreshBackgroundColor(color: Int?) {
+        refreshBackground = color
+        applyRefreshColors()
+    }
+
+    fun setRefreshIndicatorSize(size: String) {
+        refreshLayout.setSize(
+            if (size == "large") SwipeRefreshLayout.LARGE else SwipeRefreshLayout.DEFAULT,
+        )
+    }
+
+    /** No pull value exists on Android to draw a custom indicator from, so
+     *  "hidden" makes the native one invisible while the gesture still fires. */
+    fun setRefreshIndicatorHidden(hidden: Boolean) {
+        refreshHidden = hidden
+        applyRefreshColors()
+    }
+
+    private fun applyRefreshColors() {
+        if (refreshHidden) {
+            refreshLayout.setColorSchemeColors(Color.TRANSPARENT)
+            refreshLayout.setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
+            return
+        }
+        refreshTint?.let { refreshLayout.setColorSchemeColors(it) }
+            ?: refreshLayout.setColorSchemeColors(Color.BLACK)
+        refreshBackground?.let { refreshLayout.setProgressBackgroundColorSchemeColor(it) }
+            ?: refreshLayout.setProgressBackgroundColorSchemeColor(Color.WHITE)
     }
 
     // MARK: - Commands (imperative ref API)

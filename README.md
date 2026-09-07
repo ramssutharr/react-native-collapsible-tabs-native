@@ -105,8 +105,11 @@ roadmap fine print:
   back to whatever offset that tab can hold — but note that a page with no
   scroll range at all cannot be scrolled or collapsed, and drags in the blank
   area below its content do nothing.
-- Pull-to-refresh thresholds are fixed (≈70 pt pull, 60 pt spinner band on
-  iOS; platform defaults on Android) and the spinner is not customisable yet.
+- Pull-to-refresh is the platform's own indicator (an `UIActivityIndicatorView`
+  on iOS, `SwipeRefreshLayout` on Android). Threshold, resting offset, colours
+  and size are props; a fully custom indicator component driven natively is
+  not supported yet — on iOS you can hide the native one and draw your own
+  from `onHeaderOffsetChange`'s `pull`.
 - Pages stay mounted once visited (`lazy` only defers the first mount). A
   page mounts as soon as any sliver of it peeks in during a swipe, not when
   the swipe settles — so its data fetch starts if you drag toward it and
@@ -216,6 +219,11 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `renderTabBar` | `({ routes, index, onIndexChange }) => ReactNode` | defaults to `TabBar`. Want the tabs to scroll away with the header? Keep them here and pass `pinTabBar={false}` — don't move them into `renderHeader` (pages clear the tab-bar band's height either way, and an empty band gives the shell nowhere to put the tabs back without landing on content) |
 | `tabBarProps` | `TabBarProps` | colours/`onTabPress` for the default `TabBar`; ignored with `renderTabBar` |
 | `refreshing` / `onRefresh` | `boolean` / `() => void` | container-level pull-to-refresh; keep `refreshing` true until done |
+| `refreshThreshold` | `number` (dp) | pull distance that triggers a refresh on release. Default `70` |
+| `refreshIndicatorOffset` | `number` (dp) | how far below the top the spinner rests while refreshing. Default `60` |
+| `refreshTintColor` / `refreshBackgroundColor` | `ColorValue` | spinner colour, and the disc behind it (Android's native look, drawn on iOS too) |
+| `refreshIndicatorSize` | `'default' \| 'large'` | spinner size |
+| `refreshIndicatorHidden` | `boolean` | hide the native spinner and draw your own from `onHeaderOffsetChange`'s `pull` — the header band itself translates by the pull, so anything positioned above its top edge rides into view. iOS; on Android the spinner is invisible but there is no pull value. The gesture and `onRefresh` still fire |
 | `collapseThreshold` | `number` (dp) | crossing point for `onCollapsedChange` |
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
 | `headerMinHeight` | `number` (dp) | default `0`. Bottom strip of the header that stays pinned above the tab bar (a search bar, a filter row) instead of scrolling away. The tab bar necessarily stays too, so `pinTabBar={false}` is ignored while this is > 0 |

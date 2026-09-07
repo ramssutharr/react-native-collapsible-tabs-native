@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { CodegenTypes, HostComponent, ViewProps } from 'react-native';
+import type { CodegenTypes, ColorValue, HostComponent, ViewProps } from 'react-native';
 import { codegenNativeCommands, codegenNativeComponent } from 'react-native';
 
 /**
@@ -104,6 +104,22 @@ export interface NativeProps extends ViewProps {
   headerMinHeight?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
   /** Shell-level pull-to-refresh spinner (one for the whole container). */
   refreshing?: CodegenTypes.WithDefault<boolean, false>;
+  /** Pull distance (dp) that triggers a refresh on release. */
+  refreshThreshold?: CodegenTypes.WithDefault<CodegenTypes.Int32, 70>;
+  /** How far below the top (dp) the spinner rests while refreshing. */
+  refreshIndicatorOffset?: CodegenTypes.WithDefault<CodegenTypes.Int32, 60>;
+  /** Spinner colour. */
+  refreshTintColor?: ColorValue;
+  /** Colour of the disc behind the spinner (Android's native look; drawn on iOS too). */
+  refreshBackgroundColor?: ColorValue;
+  /** 'default' | 'large'. */
+  refreshIndicatorSize?: CodegenTypes.WithDefault<string, 'default'>;
+  /**
+   * Hide the native spinner and draw your own from `onHeaderOffsetChange`'s
+   * `pull` (iOS; on Android the spinner is made invisible but there is no
+   * pull value to draw from). The gesture and `onRefresh` still fire.
+   */
+  refreshIndicatorHidden?: CodegenTypes.WithDefault<boolean, false>;
   /**
    * Whether the pull gesture arms at all. The JS side derives this from the
    * presence of `onRefresh` — without a handler nothing would ever clear the

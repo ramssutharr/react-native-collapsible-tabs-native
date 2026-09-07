@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- New: pull-to-refresh is configurable — `refreshThreshold` (dp, default 70),
+  `refreshIndicatorOffset` (dp the spinner rests at while refreshing, default
+  60), `refreshTintColor`, `refreshBackgroundColor` (the disc behind the
+  spinner; Android's native look, now drawn on iOS too), `refreshIndicatorSize`
+  (`'default' | 'large'`) and `refreshIndicatorHidden` (hide the native
+  spinner and draw your own from `onHeaderOffsetChange`'s `pull` on iOS; on
+  Android the spinner is made invisible, the gesture still fires). Backed by
+  `SwipeRefreshLayout`'s own setters on Android.
 - Fix (iOS): the refresh spinner no longer appears on a momentum bounce. A
   fling to the top overshoots into UIKit's rubber-band, the offset goes
   negative for a few frames, and the engine read that exactly like a finger

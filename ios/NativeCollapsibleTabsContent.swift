@@ -48,6 +48,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private let headerSlot = UIView()
   private let tabBarSlot = UIView()
   private let spinner = UIActivityIndicatorView(style: .medium)
+  /// The disc behind the spinner; this is what the engine positions/fades.
+  private let spinnerDisc = UIView()
+  private var spinnerHidden = false
   private var pageSlots: [UIView] = []
 
   // MARK: - RN children
@@ -163,8 +166,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var dragStartOffset: CGFloat = 0
   private var fling: FlingDriver?
 
-  private static let refreshThreshold: CGFloat = 70
-  private static let refreshBand: CGFloat = 60
+  /// Pull distance that triggers a refresh on release (`refreshThreshold`).
+  private var refreshThreshold: CGFloat = 70
+  /// How far the list is held open while refreshing (`refreshIndicatorOffset`).
+  private var refreshBand: CGFloat = 60
   private static let syncGiveUp: TimeInterval = 0.4
   private static let maxSyncRetries = 5
 
@@ -185,8 +190,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     addSubview(pager)
 
     spinner.hidesWhenStopped = false
-    spinner.alpha = 0
-    addSubview(spinner)
+    spinnerDisc.alpha = 0
+    spinnerDisc.backgroundColor = .clear
+    spinnerDisc.addSubview(spinner)
+    addSubview(spinnerDisc)
+    layoutSpinnerDisc()
 
     addSubview(headerSlot)
     addSubview(tabBarSlot)
@@ -574,6 +582,45 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if h > 0 { applyCollapseSlackToAll() }
   }
 
+  private func layoutSpinnerDisc() {
+    let side: CGFloat = spinner.style == .large ? 56 : 40
+    spinnerDisc.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+    spinnerDisc.layer.cornerRadius = side / 2
+    spinner.center = CGPoint(x: side / 2, y: side / 2)
+  }
+
+  // MARK: Refresh customisation
+
+  @objc public func setRefreshThreshold(_ value: CGFloat) {
+    refreshThreshold = max(1, value)
+    applyBandTransform()
+  }
+
+  @objc public func setRefreshIndicatorOffset(_ value: CGFloat) {
+    // Changing the band mid-refresh would desync the inset we already added;
+    // it takes effect from the next refresh.
+    refreshBand = max(0, value)
+  }
+
+  @objc public func setRefreshTintColor(_ color: UIColor?) {
+    spinner.color = color
+  }
+
+  @objc public func setRefreshBackgroundColor(_ color: UIColor?) {
+    spinnerDisc.backgroundColor = color ?? .clear
+  }
+
+  @objc public func setRefreshIndicatorSize(_ size: String) {
+    spinner.style = size == "large" ? .large : .medium
+    layoutSpinnerDisc()
+    applyBandTransform()
+  }
+
+  @objc public func setRefreshIndicatorHidden(_ hidden: Bool) {
+    spinnerHidden = hidden
+    spinnerDisc.isHidden = hidden
+  }
+
   private func applyBandTransform() {
     let ty = -headerOffset + pull
     let transform = CGAffineTransform(translationX: 0, y: ty)
@@ -581,10 +628,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     tabBarSlot.transform = transform
     // A momentum bounce moves the bands but must not show the spinner.
     let visiblePull = pullFromDrag ? max(pull, 0) : 0
-    spinner.center = CGPoint(x: bounds.width / 2, y: visiblePull / 2)
+    spinnerDisc.center = CGPoint(x: bounds.width / 2, y: visiblePull / 2)
     if !refreshing {
-      spinner.alpha = refreshEnabled ? min(1, visiblePull / Self.refreshThreshold) : 0
-      spinner.transform = CGAffineTransform(rotationAngle: visiblePull / Self.refreshThreshold * .pi)
+      spinnerDisc.alpha = refreshEnabled ? min(1, visiblePull / refreshThreshold) : 0
+      spinnerDisc.transform = CGAffineTransform(rotationAngle: visiblePull / refreshThreshold * .pi)
     }
     emitHeaderOffset()
   }
@@ -699,7 +746,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public func handleScrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
     guard scrollView === activeScrollView() else { return }
-    if refreshEnabled, !refreshing, pullFromDrag, pull >= Self.refreshThreshold {
+    if refreshEnabled, !refreshing, pullFromDrag, pull >= refreshThreshold {
       beginRefresh(emit: true)
     }
   }
@@ -1076,22 +1123,23 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   // MARK: - Pull to refresh
 
   private func refreshInsetApplied(to scrollView: UIScrollView) -> CGFloat {
-    refreshing && refreshHost === scrollView ? Self.refreshBand : 0
+    refreshing && refreshHost === scrollView ? refreshBand : 0
   }
 
   private func beginRefresh(emit: Bool) {
     guard refreshEnabled, !refreshing else { return }
     refreshing = true
-    spinner.alpha = 1
-    spinner.transform = .identity
+    spinnerDisc.alpha = 1
+    spinnerDisc.transform = .identity
+    spinnerDisc.center = CGPoint(x: bounds.width / 2, y: refreshBand / 2)
     spinner.startAnimating()
     if let sv = activeScrollView() {
       refreshHost = sv
       refreshHostOriginalInset = sv.contentInset.top
-      sv.contentInset.top = refreshHostOriginalInset + Self.refreshBand
+      sv.contentInset.top = refreshHostOriginalInset + refreshBand
       // Hold the list open by the spinner band; the bands follow via `pull`.
-      if sv.contentOffset.y > -Self.refreshBand, !sv.isDragging {
-        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: -Self.refreshBand), animated: true)
+      if sv.contentOffset.y > -refreshBand, !sv.isDragging {
+        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: -refreshBand), animated: true)
       }
     }
     if emit { onRefresh?() }
@@ -1113,7 +1161,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       if sv.contentOffset.y < 0, !sv.isDragging {
         sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: 0)
       }
-      self.spinner.alpha = 0
+      self.spinnerDisc.alpha = 0
     }
   }
 
@@ -1272,7 +1320,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       guard intent == .drive, let sv = activeScrollView() else { return }
       let velocity = -pan.velocity(in: self).y
       if sv.contentOffset.y < 0 {
-        if refreshEnabled, !refreshing, pullFromDrag, pull >= Self.refreshThreshold {
+        if refreshEnabled, !refreshing, pullFromDrag, pull >= refreshThreshold {
           beginRefresh(emit: true)
         } else if !refreshing {
           sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: 0), animated: true)

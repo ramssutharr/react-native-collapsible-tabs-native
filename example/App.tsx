@@ -82,9 +82,21 @@ function Header({ progress }: { progress: SharedValue<number> }) {
   // read it there too, so the header reacts without a JS frame.
   const avatarStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: interpolate(progress.value, [0, 1], [1, 0.55], Extrapolation.CLAMP) },
+      {
+        scale: interpolate(
+          progress.value,
+          [0, 1],
+          [1, 0.55],
+          Extrapolation.CLAMP,
+        ),
+      },
     ],
-    opacity: interpolate(progress.value, [0, 0.9], [1, 0.35], Extrapolation.CLAMP),
+    opacity: interpolate(
+      progress.value,
+      [0, 0.9],
+      [1, 0.35],
+      Extrapolation.CLAMP,
+    ),
   }));
   const bioStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.5], [1, 0], Extrapolation.CLAMP),
@@ -160,7 +172,10 @@ export default function App() {
     },
     ['topHeaderOffsetChange', 'onHeaderOffsetChange'],
   );
-  const renderHeader = useCallback(() => <Header progress={progress} />, [progress]);
+  const renderHeader = useCallback(
+    () => <Header progress={progress} />,
+    [progress],
+  );
 
   const navigationState = useMemo(() => ({ index, routes: ROUTES }), [index]);
 
@@ -248,6 +263,9 @@ export default function App() {
         renderScene={renderScene}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        refreshTintColor="#5b8def"
+        refreshBackgroundColor="#eef1f6"
+        refreshThreshold={80}
         collapseMode={direction ? 'direction' : 'classic'}
         pinTabBar={pinTabBar}
         allowFullCollapse={allowFullCollapse}

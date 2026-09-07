@@ -5,6 +5,7 @@
 #import <react/renderer/components/RNCollapsibleTabsSpec/Props.h>
 #import <react/renderer/components/RNCollapsibleTabsSpec/RCTComponentViewHelpers.h>
 
+#import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
 #import <React/RCTScrollViewComponentView.h>
 
@@ -26,6 +27,12 @@
 - (void)setHeaderOffsetEnabled:(BOOL)enabled;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
+- (void)setRefreshThreshold:(CGFloat)value;
+- (void)setRefreshIndicatorOffset:(CGFloat)value;
+- (void)setRefreshTintColor:(UIColor *_Nullable)color;
+- (void)setRefreshBackgroundColor:(UIColor *_Nullable)color;
+- (void)setRefreshIndicatorSize:(NSString *)size;
+- (void)setRefreshIndicatorHidden:(BOOL)hidden;
 - (void)mountChild:(UIView *)child nativeId:(NSString *_Nullable)nativeId index:(NSInteger)index;
 - (void)unmountChild:(UIView *)child;
 - (void)handleScrollViewDidScroll:(UIScrollView *)scrollView;
@@ -329,6 +336,24 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.refreshEnabled != previousProps.refreshEnabled) {
     [_content setRefreshEnabled:newProps.refreshEnabled];
+  }
+  if (oldProps == nullptr || newProps.refreshThreshold != previousProps.refreshThreshold) {
+    [_content setRefreshThreshold:newProps.refreshThreshold];
+  }
+  if (oldProps == nullptr || newProps.refreshIndicatorOffset != previousProps.refreshIndicatorOffset) {
+    [_content setRefreshIndicatorOffset:newProps.refreshIndicatorOffset];
+  }
+  if (oldProps == nullptr || newProps.refreshTintColor != previousProps.refreshTintColor) {
+    [_content setRefreshTintColor:RCTUIColorFromSharedColor(newProps.refreshTintColor)];
+  }
+  if (oldProps == nullptr || newProps.refreshBackgroundColor != previousProps.refreshBackgroundColor) {
+    [_content setRefreshBackgroundColor:RCTUIColorFromSharedColor(newProps.refreshBackgroundColor)];
+  }
+  if (oldProps == nullptr || newProps.refreshIndicatorSize != previousProps.refreshIndicatorSize) {
+    [_content setRefreshIndicatorSize:[NSString stringWithUTF8String:newProps.refreshIndicatorSize.c_str()]];
+  }
+  if (oldProps == nullptr || newProps.refreshIndicatorHidden != previousProps.refreshIndicatorHidden) {
+    [_content setRefreshIndicatorHidden:newProps.refreshIndicatorHidden];
   }
 
   [super updateProps:props oldProps:oldProps];

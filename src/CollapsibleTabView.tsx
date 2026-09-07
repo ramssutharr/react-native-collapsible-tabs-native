@@ -1,5 +1,5 @@
 import React, { forwardRef, useMemo, type ReactNode } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { ColorValue, StyleProp, ViewStyle } from 'react-native';
 
 import { CollapsibleTabsShell, type CollapsibleTabsRef } from './CollapsibleTabsShell';
 import type { HeaderOffsetHandler, PageScrollHandler } from './pageScroll';
@@ -26,6 +26,24 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
   /** Container-level pull-to-refresh: called on pull; keep `refreshing` true until done. */
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** Pull distance (dp) that triggers a refresh on release. Default 70. */
+  refreshThreshold?: number;
+  /** How far below the top (dp) the spinner rests while refreshing. Default 60. */
+  refreshIndicatorOffset?: number;
+  /** Spinner colour. */
+  refreshTintColor?: ColorValue;
+  /** Colour of the disc behind the spinner (Android's native look, drawn on iOS too). */
+  refreshBackgroundColor?: ColorValue;
+  /** Spinner size. Default `'default'`. */
+  refreshIndicatorSize?: 'default' | 'large';
+  /**
+   * Hide the native spinner and draw your own: `onHeaderOffsetChange`
+   * reports `pull` (iOS), and the header band itself translates by the pull,
+   * so anything you position above the header's top edge rides into view as
+   * the user pulls. On Android the spinner is made invisible but there is no
+   * pull value to draw from. The gesture and `onRefresh` still fire.
+   */
+  refreshIndicatorHidden?: boolean;
   swipeEnabled?: boolean;
   /** Mount tab content on first visit (default true). */
   lazy?: boolean;
@@ -125,6 +143,12 @@ function CollapsibleTabViewInner<T extends Route>(
   tabBarProps,
   onRefresh,
   refreshing = false,
+  refreshThreshold,
+  refreshIndicatorOffset,
+  refreshTintColor,
+  refreshBackgroundColor,
+  refreshIndicatorSize,
+  refreshIndicatorHidden,
   swipeEnabled = true,
   pinTabBar = true,
   lazy = true,
@@ -168,6 +192,12 @@ function CollapsibleTabViewInner<T extends Route>(
       onHeaderOffsetChange={onHeaderOffsetChange}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      refreshThreshold={refreshThreshold}
+      refreshIndicatorOffset={refreshIndicatorOffset}
+      refreshTintColor={refreshTintColor}
+      refreshBackgroundColor={refreshBackgroundColor}
+      refreshIndicatorSize={refreshIndicatorSize}
+      refreshIndicatorHidden={refreshIndicatorHidden}
       lazy={lazy}
       style={style}
     />
