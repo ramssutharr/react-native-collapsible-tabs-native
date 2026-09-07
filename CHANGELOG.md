@@ -10,6 +10,13 @@
   spinner and draw your own from `onHeaderOffsetChange`'s `pull` on iOS; on
   Android the spinner is made invisible, the gesture still fires). Backed by
   `SwipeRefreshLayout`'s own setters on Android.
+- Docs: README brought up to date — the "not exposed per frame" and
+  "no min-header" limitations were stale since `onHeaderOffsetChange` /
+  `headerMinHeight`, the FAQ still recommended tabs-inside-the-header, and
+  it now answers the questions that actually come up (pinning inside the
+  header, sticky section headers under the bands, `Animated.event`,
+  `expand()` in direction mode, empty tabs, header-strip gestures, Jest,
+  supported RN versions).
 - Fix (iOS): the refresh spinner no longer appears on a momentum bounce. A
   fling to the top overshoots into UIKit's rubber-band, the offset goes
   negative for a few frames, and the engine read that exactly like a finger
