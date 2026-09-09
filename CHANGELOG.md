@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-09-09
 
 - Fix: buttons in the header and tab bar dropped presses whenever the bands
   were away from where JS laid them out — every hard press on a 3D Touch
