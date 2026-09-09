@@ -33,8 +33,15 @@ import java.util.WeakHashMap
  *
  *   pager      : (0, 0, w, h)                — full host; pages pad their
  *                                              content by headerH + tabH
- *   headerSlot : (0, 0, w, headerH)          — translationY = -offset
- *   tabBarSlot : (0, headerH, w, headerH+tabH) — translationY = -offset
+ *   bandsSlot  : (0, 0, w, headerH+tabH-offset) — clips the bands
+ *   bands      : RN ScrollView (header over tab bar, headerH+tabH tall),
+ *                scrollY = offset. Driving a REAL RN scroll view rather than
+ *                translating re-parented views keeps the shadow tree honest:
+ *                Fabric's `measure()` — what `Pressable` uses to decide
+ *                whether a moving finger is still on it — only knows native
+ *                positions through ScrollView state, which ReactScrollView
+ *                writes on every scroll. Moved any other way, a button in the
+ *                bands drops every press that emits a touch-move.
  *   offset     : clamp(activePage.scrollY, 0, headerH)
  *
  * The bands are ABOVE the pager in z, so with offset == headerH the tab bar
@@ -76,14 +83,15 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private val refreshLayout = SwipeRefreshLayout(context)
     private val content = ContentView(context)
     private val pager = ViewPager2(context)
-    private val headerSlot = SlotView(context)
-    private val tabBarSlot = SlotView(context)
+    /** Clips the bands to the part still on screen; everything below it is the pager's. */
+    private val bandsSlot = SlotView(context)
     private val adapter = PagerAdapter()
 
     /** RN's ordered child list — what the ViewGroupManager reports back. */
     private val reactChildren = ArrayList<View>()
-    private var headerChild: View? = null
-    private var tabBarChild: View? = null
+    private var bandsChild: View? = null
+    /** The RN ScrollView holding header and tab bar (see the class comment). */
+    private var bandsScrollView: ReactScrollView? = null
     private val pageChildren = SparseArray<View>()
     /** Bound page slots by position (the adapter keeps every page bound). */
     private val pageSlots = SparseArray<SlotView>()
@@ -489,14 +497,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private fun assignRole(child: View, index: Int) {
         val nativeId = child.getTag(R.id.view_tag_native_id) as? String
         when {
-            nativeId == ID_HEADER -> {
-                headerChild = child
-                headerSlot.attach(child)
-            }
-            nativeId == ID_TABBAR -> {
-                tabBarChild = child
-                tabBarSlot.attach(child)
-            }
+            nativeId == ID_BANDS -> attachBands(child)
             nativeId != null && nativeId.startsWith(ID_PAGE_PREFIX) -> {
                 val page = nativeId.removePrefix(ID_PAGE_PREFIX).toIntOrNull()
                 if (page == null) {
@@ -509,28 +510,30 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             }
             else -> {
                 // No nativeID: positional fallback (header, tab bar, pages…).
-                when (index) {
-                    0 -> { headerChild = child; headerSlot.attach(child) }
-                    1 -> { tabBarChild = child; tabBarSlot.attach(child) }
-                    else -> {
-                        val page = index - 2
-                        pageChildren.put(page, child)
-                        pageSlots.get(page)?.attach(child)
-                    }
+                if (index == 0) {
+                    attachBands(child)
+                } else {
+                    val page = index - 1
+                    pageChildren.put(page, child)
+                    pageSlots.get(page)?.attach(child)
                 }
             }
         }
     }
 
+    private fun attachBands(child: View) {
+        bandsChild = child
+        bandsScrollView = child as? ReactScrollView
+        if (bandsScrollView == null) Log.w(TAG, "tabs-bands child is not a ReactScrollView")
+        bandsSlot.attach(child)
+        layoutBands()
+    }
+
     private fun releaseRole(child: View) {
-        if (headerChild === child) {
-            headerChild = null
-            headerSlot.detach()
-            return
-        }
-        if (tabBarChild === child) {
-            tabBarChild = null
-            tabBarSlot.detach()
+        if (bandsChild === child) {
+            bandsChild = null
+            bandsScrollView = null
+            bandsSlot.detach()
             return
         }
         var page = -1
@@ -657,8 +660,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         }
 
         content.addView(pager)
-        content.addView(headerSlot)
-        content.addView(tabBarSlot)
+        content.addView(bandsSlot)
         refreshLayout.addView(content)
         refreshLayout.setOnRefreshListener { onRefresh?.invoke() }
         // A pull only starts from the very top: header expanded AND the
@@ -982,11 +984,32 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private fun setHeaderOffsetNow(offset: Int) {
         if (offset == headerOffset) return
         headerOffset = offset
-        val ty = -offset.toFloat()
-        headerSlot.translationY = ty
-        tabBarSlot.translationY = ty
+        layoutBands()
         updateCollapsed()
         emitHeaderOffset()
+    }
+
+    /**
+     * Puts the bands where the offset says: the slot (and with it the RN
+     * scroll view's viewport) shrinks to what is still visible, and the scroll
+     * view is scrolled by `offset`. The shrink is what makes that a legal
+     * scroll: ScrollView clamps to `content - viewport`, and the content is
+     * always the full header + tab bar. Cheap enough per frame — one small
+     * view group, no measure pass up the tree.
+     */
+    private fun layoutBands() {
+        val w = content.width
+        if (w <= 0) return
+        val visible = (headerHeightPx + tabBarHeightPx - headerOffset).coerceAtLeast(0)
+        if (bandsSlot.width != w || bandsSlot.height != visible) {
+            bandsSlot.measure(
+                MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(visible, MeasureSpec.EXACTLY),
+            )
+            bandsSlot.layout(0, 0, w, visible)
+        }
+        val sv = bandsScrollView ?: return
+        if (sv.scrollY != headerOffset) sv.scrollTo(0, headerOffset)
     }
 
     private var lastEmittedOffset = -1
@@ -1119,13 +1142,12 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                 MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
             )
-            headerSlot.measure(
+            bandsSlot.measure(
                 MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(headerHeightPx, MeasureSpec.EXACTLY),
-            )
-            tabBarSlot.measure(
-                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(tabBarHeightPx, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(
+                    (headerHeightPx + tabBarHeightPx - headerOffset).coerceAtLeast(0),
+                    MeasureSpec.EXACTLY,
+                ),
             )
         }
 
@@ -1133,11 +1155,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             val w = r - l
             val h = b - t
             pager.layout(0, 0, w, h)
-            headerSlot.layout(0, 0, w, headerHeightPx)
-            tabBarSlot.layout(0, headerHeightPx, w, headerHeightPx + tabBarHeightPx)
-            val ty = -headerOffset.toFloat()
-            headerSlot.translationY = ty
-            tabBarSlot.translationY = ty
+            layoutBands()
         }
 
         /**
@@ -1161,8 +1179,10 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             for (i in 0 until view.childCount) {
                 val child = view.getChildAt(i)
                 if (child.visibility != View.VISIBLE) continue
-                val cx = x - child.left - child.translationX
-                val cy = y - child.top - child.translationY
+                // A scrolling parent (the bands scroll view) shows its children
+                // shifted by its scroll position.
+                val cx = x - child.left - child.translationX + view.scrollX
+                val cy = y - child.top - child.translationY + view.scrollY
                 if (horizontallyScrollableAt(child, cx, cy)) return true
             }
             return false
@@ -1198,9 +1218,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                     // those.
                     downOnHorizontalScrollable = isOnHeader(ev.y) &&
                         horizontallyScrollableAt(
-                            headerSlot,
-                            ev.x - headerSlot.left - headerSlot.translationX,
-                            ev.y - headerSlot.top - headerSlot.translationY,
+                            bandsSlot,
+                            ev.x - bandsSlot.left,
+                            ev.y - bandsSlot.top,
                         )
                     forwarding = false
                     forwardTarget = null
@@ -1277,8 +1297,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         refreshLayout.forceLayout()
         content.forceLayout()
         pager.forceLayout()
-        headerSlot.forceLayout()
-        tabBarSlot.forceLayout()
+        bandsSlot.forceLayout()
         measure(
             MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
@@ -1357,8 +1376,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     companion object {
         private const val TAG = "CollapsibleTabsHostView"
-        const val ID_HEADER = "tabs-header"
-        const val ID_TABBAR = "tabs-tabbar"
+        const val ID_BANDS = "tabs-bands"
         const val ID_PAGE_PREFIX = "tabs-page-"
         private const val MAX_DISCOVERY_VISITS = 4000
         private const val SYNC_GIVE_UP_MS = 400L

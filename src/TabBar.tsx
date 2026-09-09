@@ -27,6 +27,14 @@ export type TabBarProps<T extends Route = Route> = {
   labelStyle?: StyleProp<TextStyle>;
   /** Scroll the strip when the tabs overflow (default true). */
   scrollEnabled?: boolean;
+  /**
+   * The pager's continuous position (`0..routes.length-1`, e.g. 1.4 halfway
+   * from tab 1 to tab 2) so the underline and label colour track the finger.
+   * `CollapsibleTabView` supplies this for its default tab bar; a custom
+   * `renderTabBar` can build one from `onPageScroll`. Without it the strip
+   * animates to `index` on settle.
+   */
+  position?: Animated.Value;
 };
 
 /**
@@ -48,9 +56,24 @@ export function TabBar<T extends Route = Route>({
   tabStyle,
   labelStyle,
   scrollEnabled = true,
+  position,
 }: TabBarProps<T>) {
   const scrollRef = useRef<ScrollView>(null);
   const itemX = useRef<number[]>([]);
+
+  // One continuous value drives every tab: the pager's live position when the
+  // shell provides it, else an internal value eased to `index` on settle.
+  // useState initializer, not `useRef(...).current`: same create-once
+  // semantics, but an Animated.Value is a stable mutable box rather than a
+  // ref, and the hooks lint (rightly) refuses ref reads during render.
+  const [settled] = React.useState(() => new Animated.Value(index));
+  useEffect(() => {
+    if (position) {
+      return;
+    }
+    Animated.timing(settled, { toValue: index, duration: 200, useNativeDriver: false }).start();
+  }, [index, position, settled]);
+  const driver = position ?? settled;
 
   // Keep the active tab in view when the strip overflows.
   useEffect(() => {
@@ -88,7 +111,8 @@ export function TabBar<T extends Route = Route>({
           >
             <TabBarItem
               title={route.title}
-              active={i === index}
+              index={i}
+              driver={driver}
               activeColor={activeColor}
               inactiveColor={inactiveColor}
               indicatorColor={indicatorColor}
@@ -105,7 +129,9 @@ export function TabBar<T extends Route = Route>({
 
 type ItemProps = {
   title: string;
-  active: boolean;
+  index: number;
+  /** The strip's continuous position; this tab is fully active at `index`. */
+  driver: Animated.Value;
   activeColor: string;
   inactiveColor: string;
   indicatorColor: string;
@@ -116,7 +142,8 @@ type ItemProps = {
 
 function TabBarItem({
   title,
-  active,
+  index,
+  driver,
   activeColor,
   inactiveColor,
   indicatorColor,
@@ -124,19 +151,16 @@ function TabBarItem({
   labelStyle,
   onPress,
 }: ItemProps) {
-  // useState initializer, not `useRef(...).current`: same create-once
-  // semantics, but an Animated.Value is a stable mutable box rather than a
-  // ref, and the hooks lint (rightly) refuses ref reads during render.
-  const [progress] = React.useState(() => new Animated.Value(active ? 1 : 0));
   const [labelWidth, setLabelWidth] = React.useState(0);
 
-  useEffect(() => {
-    Animated.timing(progress, {
-      toValue: active ? 1 : 0,
-      duration: 200,
-      useNativeDriver: false, // width + colour interpolation
-    }).start();
-  }, [active, progress]);
+  // 1 when the pager sits on this tab, fading to 0 one tab away on either
+  // side — so during a swipe the outgoing underline shrinks as the incoming
+  // one grows, in step with the finger.
+  const progress = driver.interpolate({
+    inputRange: [index - 1, index, index + 1],
+    outputRange: [0, 1, 0],
+    extrapolate: 'clamp',
+  });
 
   const color = progress.interpolate({ inputRange: [0, 1], outputRange: [inactiveColor, activeColor] });
   const indicatorWidth = progress.interpolate({

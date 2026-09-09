@@ -1,8 +1,8 @@
-import React, { forwardRef, useMemo, type ReactNode } from 'react';
-import type { ColorValue, StyleProp, ViewStyle } from 'react-native';
+import React, { forwardRef, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { Animated, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 
 import { CollapsibleTabsShell, type CollapsibleTabsRef } from './CollapsibleTabsShell';
-import type { HeaderOffsetHandler, PageScrollHandler } from './pageScroll';
+import { isWorkletHandler, type HeaderOffsetHandler, type PageScrollHandler } from './pageScroll';
 import { TabBar, type TabBarProps } from './TabBar';
 import type { Route } from './types';
 
@@ -167,10 +167,34 @@ function CollapsibleTabViewInner<T extends Route>(
 
   const pages = useMemo(() => routes.map((route) => renderScene({ route })), [renderScene, routes]);
 
+  // The default tab bar tracks the finger from the pager's per-frame position.
+  // One native event has one handler: a plain-function `onPageScroll` of the
+  // consumer's is chained with ours; a Reanimated worklet has to be handed
+  // over whole, and the default strip then falls back to easing on settle.
+  const [position] = useState(() => new Animated.Value(index));
+  const consumerIsWorklet = isWorkletHandler(onPageScroll);
+  const trackPosition = !renderTabBar && !consumerIsWorklet;
+  const chainedPageScroll = useCallback(
+    (e: { nativeEvent: { position: number; offset: number } }) => {
+      if (typeof onPageScroll === 'function') {
+        onPageScroll(e);
+      }
+      position.setValue(e.nativeEvent.position + e.nativeEvent.offset);
+    },
+    [onPageScroll, position],
+  );
+  const pageScroll: PageScrollHandler | undefined = trackPosition ? chainedPageScroll : onPageScroll;
+
   const tabBar = renderTabBar ? (
     renderTabBar({ routes, index, onIndexChange })
   ) : (
-    <TabBar<T> {...tabBarProps} routes={routes} index={index} onIndexChange={onIndexChange} />
+    <TabBar<T>
+      {...tabBarProps}
+      routes={routes}
+      index={index}
+      onIndexChange={onIndexChange}
+      position={trackPosition ? position : undefined}
+    />
   );
 
   return (
@@ -187,7 +211,7 @@ function CollapsibleTabViewInner<T extends Route>(
       swipeEnabled={swipeEnabled}
       pinTabBar={pinTabBar}
       allowFullCollapse={allowFullCollapse}
-      onPageScroll={onPageScroll}
+      onPageScroll={pageScroll}
       headerMinHeight={headerMinHeight}
       onHeaderOffsetChange={onHeaderOffsetChange}
       refreshing={refreshing}

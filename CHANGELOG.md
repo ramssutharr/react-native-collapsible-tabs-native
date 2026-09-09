@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Fix: buttons in the header and tab bar dropped presses whenever the bands
+  were away from where JS laid them out — every hard press on a 3D Touch
+  iPhone (force changes stream touch-moves), and any tap whose finger rolled
+  a little, on both platforms. `Pressable` decides "still on me?" from
+  `measure()`, which on Fabric reads the shadow tree, and the shadow tree
+  never knew the shell had moved the bands natively. The bands now live in a
+  real React Native `ScrollView` (`tabs-bands`) that the shell drives by
+  content offset; RN writes that offset into the shadow tree on every scroll,
+  so the measured rect and the real one agree at any collapse offset.
+  Internal to the shell — no API change — but a custom `CollapsibleTabsShell`
+  consumer that relied on the `tabs-header` / `tabs-tabbar` children being
+  direct children of the host should note they now sit inside `tabs-bands`.
+- New: the bundled `TabBar` tracks the finger. Its underline and label colour
+  now interpolate with the pager's swipe position instead of jumping on
+  settle. `CollapsibleTabView` feeds it `onPageScroll` automatically when the
+  default tab bar is in use (a plain-function `onPageScroll` of your own is
+  chained; a Reanimated worklet keeps the old settle-only animation, since
+  one native event has one handler). `TabBar` also takes a `position`
+  `Animated.Value` directly for custom setups.
+- Fix (iOS): switching tabs while a page was held open by pull-to-refresh
+  (or mid-bounce) left the bands a refresh band too low over the new tab —
+  `pull` was only ever read from the active page's scroll callback, and the
+  new page never scrolled to correct it. It is now re-read on activation and
+  when a refresh ends on a page that is no longer active.
 - Example: a **Bench** screen (500-row list + a JS-thread load switch, also
   reachable through `collapsibletabs://bench?load=1`) and
   `scripts/bench-android.sh`, which drives it over adb and prints

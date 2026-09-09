@@ -244,7 +244,7 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `pinTabBar` | `boolean` | default **`true`**: the tab bar stays pinned at the top once the header is gone. `false`: the whole band, tabs included, collapses as part of the header |
 | `allowFullCollapse` | `boolean` | default **`true`**. Tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks; tabs with enough content are untouched. `false` restores the old behaviour |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
-| `onPageScroll` | Reanimated `useEvent` handler, or `(e) => void` | the pager's live swipe position, for a tab indicator that tracks the finger. Emitted only while a handler is set. A worklet reads it on the UI thread; a plain function costs a JS call per frame |
+| `onPageScroll` | Reanimated `useEvent` handler, or `(e) => void` | the pager's live swipe position, for a tab indicator that tracks the finger. Emitted only while a handler is set. A worklet reads it on the UI thread; a plain function costs a JS call per frame. The bundled `TabBar` already uses it (a plain function of yours is chained; a worklet takes the event over and the bundled indicator falls back to animating on settle) |
 | `swipeEnabled` | `boolean` | default `true` |
 | `lazy` | `boolean` | default `true`; mount a page on first visit |
 | `style` | `ViewStyle` | shell container style |
@@ -337,11 +337,14 @@ const TabLegendList = createTabList(LegendList);
 
 ### `<TabBar>`
 
-The default strip: labels with an animated underline; scrolls when the tabs
-overflow. Props: `routes`, `index`, `onIndexChange`, `onTabPress?`,
-`activeColor?`, `inactiveColor?`, `indicatorColor?`, `backgroundColor?`,
-`style?`, `tabStyle?`, `labelStyle?`, `scrollEnabled?` (default `true`; pass
-`false` for equal-width tabs).
+The default strip: labels with an underline that tracks the finger during a
+swipe; scrolls when the tabs overflow. Props: `routes`, `index`,
+`onIndexChange`, `onTabPress?`, `activeColor?`, `inactiveColor?`,
+`indicatorColor?`, `backgroundColor?`, `style?`, `tabStyle?`, `labelStyle?`,
+`scrollEnabled?` (default `true`; pass `false` for equal-width tabs),
+`position?` (an `Animated.Value` of the pager's continuous position —
+`CollapsibleTabView` supplies it; from a custom `renderTabBar`, feed one from
+`onPageScroll`).
 
 ### `<CollapsibleTabsShell>`
 
@@ -356,11 +359,15 @@ collapse / refresh / event props, and the same `ref`.
 ## How it works
 
 Fabric mounts your header, tab bar and pages as children of the native view;
-the native side re-parents them by `nativeID` into slots: a header band and a
-tab-bar band drawn above a horizontal pager (paging `UIScrollView` on iOS,
-`ViewPager2` on Android). The active page's vertical scroll view is located
-and observed natively; its offset, clamped to the header height, becomes the
-bands' translation — applied in the same callback that moved the content.
+the native side re-parents them by `nativeID` into slots: the two bands (the
+header over the tab bar, inside one non-scrollable React Native `ScrollView`)
+drawn above a horizontal pager (paging `UIScrollView` on iOS, `ViewPager2` on
+Android). The active page's vertical scroll view is located and observed
+natively; its offset, clamped to the header height, becomes the bands' scroll
+offset — applied in the same callback that moved the content. Driving a real
+RN scroll view rather than translating the views is what keeps `Pressable`s in
+the bands working: Fabric's `measure()` only learns native positions through
+ScrollView state, which RN updates on every scroll.
 Neighbouring pages are pre-aligned during a swipe, and pages that mount late
 are aligned as their content grows. When the shell takes over a gesture it
 cancels React's in-flight touch, so buttons under the finger don't fire.

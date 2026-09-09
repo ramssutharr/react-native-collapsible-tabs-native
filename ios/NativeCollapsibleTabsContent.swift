@@ -9,8 +9,16 @@ import UIKit
 ///
 ///   pager      : bounds                       — pages pad their content by
 ///                                               headerH + tabH at the top
-///   headerSlot : (0, 0, w, headerH)           — translated by -offset (+pull)
-///   tabBarSlot : (0, headerH, w, headerH+tabH) — translated the same
+///   bandsSlot  : (0, 0, w, headerH+tabH-offset+pull) — clips the bands
+///   bands      : RN ScrollView (header over tab bar, headerH+tabH tall),
+///                contentOffset.y = offset - pull. Driving a REAL RN scroll
+///                view rather than translating re-parented views keeps the
+///                shadow tree honest: Fabric's `measure()` — what `Pressable`
+///                uses to decide whether a moving finger is still on it —
+///                only knows native positions through ScrollView state, which
+///                RN writes on every scroll. Moved any other way, a button in
+///                the bands drops every press that emits a touch-move (3D
+///                Touch, a rolling finger).
 ///   offset     : clamp(activePage.contentOffset.y, 0, headerH)
 ///   pull       : max(0, -activePage.contentOffset.y)   (bounce / refresh)
 ///
@@ -28,6 +36,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   // MARK: - Callbacks into the Fabric host
 
   @objc public var scrollViewResolver: ((UIView) -> UIScrollView?)?
+  /// Given the mounted bands root (an RN ScrollView component view), returns
+  /// its UIScrollView. RN-specific, so it lives on the ObjC++ side.
+  @objc public var bandsScrollViewResolver: ((UIView) -> UIScrollView?)?
   @objc public var onPageSelected: ((Int) -> Void)?
   /// A page showed any part of itself for the first time (see `revealPage`).
   @objc public var onPageRevealed: ((Int) -> Void)?
@@ -45,8 +56,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   // MARK: - Native subviews
 
   private let pager = UIScrollView()
-  private let headerSlot = UIView()
-  private let tabBarSlot = UIView()
+  /// Clips the bands to the part still on screen; its height is what the
+  /// user sees of header + tab bar, and everything below it is the pager's.
+  private let bandsSlot = UIView()
+  /// The RN ScrollView holding header and tab bar (see the header comment).
+  private weak var bandsScrollView: UIScrollView?
   private let spinner = UIActivityIndicatorView(style: .medium)
   /// The disc behind the spinner; this is what the engine positions/fades.
   private let spinnerDisc = UIView()
@@ -55,8 +69,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   // MARK: - RN children
 
-  private var headerChild: UIView?
-  private var tabBarChild: UIView?
+  private var bandsChild: UIView?
   private var pageChildren: [Int: UIView] = [:]
 
   // MARK: - Props
@@ -196,15 +209,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     addSubview(spinnerDisc)
     layoutSpinnerDisc()
 
-    addSubview(headerSlot)
-    addSubview(tabBarSlot)
+    bandsSlot.clipsToBounds = true
+    addSubview(bandsSlot)
 
-    for slot in [headerSlot, tabBarSlot] {
-      let pan = UIPanGestureRecognizer(target: self, action: #selector(handleBandPan(_:)))
-      pan.delegate = self
-      pan.cancelsTouchesInView = false
-      slot.addGestureRecognizer(pan)
-    }
+    let pan = UIPanGestureRecognizer(target: self, action: #selector(handleBandPan(_:)))
+    pan.delegate = self
+    pan.cancelsTouchesInView = false
+    bandsSlot.addGestureRecognizer(pan)
   }
 
   public required init?(coder: NSCoder) { nil }
@@ -401,12 +412,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
 
   @objc public func mountChild(_ child: UIView, nativeId: String?, index: Int) {
     switch role(for: nativeId, index: index) {
-    case .header:
-      headerChild = child
-      headerSlot.addSubview(child)
-    case .tabBar:
-      tabBarChild = child
-      tabBarSlot.addSubview(child)
+    case .bands:
+      bandsChild = child
+      bandsSlot.addSubview(child)
+      bandsScrollView = bandsScrollViewResolver?(child)
+      applyBandTransform()
     case .page(let page):
       pageChildren[page] = child
       pageScrollViews[page] = nil
@@ -419,8 +429,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   @objc public func unmountChild(_ child: UIView) {
-    if headerChild === child { headerChild = nil }
-    if tabBarChild === child { tabBarChild = nil }
+    if bandsChild === child {
+      bandsChild = nil
+      bandsScrollView = nil
+    }
     if let page = pageChildren.first(where: { $0.value === child })?.key {
       pageChildren[page] = nil
       pageScrollViews[page] = nil
@@ -431,11 +443,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   }
 
   @objc public func reset() {
-    headerChild?.removeFromSuperview()
-    tabBarChild?.removeFromSuperview()
+    bandsChild?.removeFromSuperview()
     pageChildren.values.forEach { $0.removeFromSuperview() }
-    headerChild = nil
-    tabBarChild = nil
+    bandsChild = nil
+    bandsScrollView = nil
     pageChildren.removeAll()
     pageScrollViews.removeAll()
     contentSizeObservers.removeAll()
@@ -464,22 +475,17 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     applyBandTransform()
   }
 
-  private enum Role { case header, tabBar, page(Int) }
+  private enum Role { case bands, page(Int) }
 
   private func role(for nativeId: String?, index: Int) -> Role {
     if let id = nativeId {
-      if id == "tabs-header" { return .header }
-      if id == "tabs-tabbar" { return .tabBar }
+      if id == "tabs-bands" { return .bands }
       if id.hasPrefix("tabs-page-"), let page = Int(id.dropFirst("tabs-page-".count)) {
         return .page(page)
       }
     }
-    // Positional fallback: header, tab bar, pages…
-    switch index {
-    case 0: return .header
-    case 1: return .tabBar
-    default: return .page(index - 2)
-    }
+    // Positional fallback: bands, then pages…
+    return index == 0 ? .bands : .page(index - 1)
   }
 
   // MARK: - Layout
@@ -491,8 +497,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// (The Android side does the same from `dispatchTouchEvent`.)
   public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
     let hit = super.hitTest(point, with: event)
-    let overBand = headerSlot.bounds.contains(convert(point, to: headerSlot))
-      || tabBarSlot.bounds.contains(convert(point, to: tabBarSlot))
+    let overBand = bandsSlot.bounds.contains(convert(point, to: bandsSlot))
     if overBand {
       // A touch landing on a band stops the page's momentum, exactly as a
       // touch on the list itself would. Without this a fling from the
@@ -502,11 +507,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       // And lock a horizontal strip under the finger to one axis BEFORE any
       // recogniser can begin. gestureRecognizerShouldBegin is too late: that
       // runs only for our own pan, and the strip's may already have started.
-      for slot in [headerSlot, tabBarSlot] {
-        let local = convert(point, to: slot)
-        guard slot.bounds.contains(local) else { continue }
-        horizontalScrollView(under: local, in: slot)?.isDirectionalLockEnabled = true
-      }
+      horizontalScrollView(under: convert(point, to: bandsSlot), in: bandsSlot)?
+        .isDirectionalLockEnabled = true
     }
     // Only an already-resolved scroll view: hit-testing runs constantly, and
     // discovery walks the page's view tree.
@@ -550,14 +552,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       slot.bounds = CGRect(x: 0, y: 0, width: w, height: h)
       slot.center = CGPoint(x: CGFloat(i) * w + w / 2, y: h / 2)
     }
-    // bounds + center, never `frame`: the bands carry a translation
-    // transform, and assigning `frame` to a transformed view re-centres it so
-    // the *transformed* rect matches — silently undoing the collapse on every
-    // layout pass (which UIKit runs constantly while a list scrolls).
-    headerSlot.bounds = CGRect(x: 0, y: 0, width: w, height: headerHeight)
-    headerSlot.center = CGPoint(x: w / 2, y: headerHeight / 2)
-    tabBarSlot.bounds = CGRect(x: 0, y: 0, width: w, height: tabBarHeight)
-    tabBarSlot.center = CGPoint(x: w / 2, y: headerHeight + tabBarHeight / 2)
+    // The bands' geometry (slot height, scroll view frame, offset) is all
+    // derived from the offset, so one routine owns it.
     applyBandTransform()
     // Keep the pager on the selected page across size changes (rotation,
     // first layout): a paging scroll view does not re-snap by itself.
@@ -621,11 +617,29 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     spinnerDisc.isHidden = hidden
   }
 
+  /// Puts the bands where the offset says. The RN scroll view is scrolled by
+  /// `offset - pull` and its frame shrunk to what is still visible — the
+  /// shrink is what makes that offset a legal one (UIKit clamps a scroll
+  /// view's offset to `contentSize - frame` whenever its size changes, and RN
+  /// re-applies its size on every layout), and it keeps the touchable area
+  /// honest: nothing below the visible bands is the bands'.
   private func applyBandTransform() {
-    let ty = -headerOffset + pull
-    let transform = CGAffineTransform(translationX: 0, y: ty)
-    headerSlot.transform = transform
-    tabBarSlot.transform = transform
+    let w = bounds.width
+    let visible = max(0, headerHeight + tabBarHeight - headerOffset + pull)
+    bandsSlot.bounds = CGRect(x: 0, y: 0, width: w, height: visible)
+    bandsSlot.center = CGPoint(x: w / 2, y: visible / 2)
+    let frame = CGRect(x: 0, y: 0, width: w, height: visible)
+    // RN's component view wraps the scroll view and clips to its own bounds
+    // (a ScrollView is `overflow: scroll`), so it has to grow with the pull
+    // too or the tab bar is cut off by exactly the pull distance. Fabric
+    // re-applies both frames on its next layout of the bands; the next band
+    // update puts them back, before anything is drawn.
+    if let child = bandsChild, child.frame != frame { child.frame = frame }
+    if let sv = bandsScrollView {
+      if sv.frame != frame { sv.frame = frame }
+      let target = CGPoint(x: 0, y: headerOffset - pull)
+      if sv.contentOffset != target { sv.contentOffset = target }
+    }
     // A momentum bounce moves the bands but must not show the spinner.
     let visiblePull = pullFromDrag ? max(pull, 0) : 0
     spinnerDisc.center = CGPoint(x: bounds.width / 2, y: visiblePull / 2)
@@ -1078,6 +1092,12 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     activeIndex = index
     selectedIndex = index
     ensureActiveScrollViewObserved()
+    // `pull` is only ever written from the ACTIVE page's scroll callback, so
+    // a page left held open by a refresh (or mid-bounce) hands its pull to
+    // the next tab, which never scrolls to correct it: the bands sit a
+    // refresh band too low over a page at its top. Re-read it from the page
+    // that is active now.
+    syncPullToActive()
     reconcileHeaderToActive()
     if lastEmittedIndex != index {
       lastEmittedIndex = index
@@ -1156,6 +1176,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
     refreshHost = nil
     let original = refreshHostOriginalInset
+    // The host's own scroll events settle the bands while it is the active
+    // page; if the user has switched tabs meanwhile, nothing else would.
+    if sv !== pageScrollViews[activeIndex]?.value { syncPullToActive() }
     UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
       sv.contentInset.top = original
       if sv.contentOffset.y < 0, !sv.isDragging {
@@ -1165,11 +1188,30 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
   }
 
+  /// `pull` as the active page sees it right now (0 with no page or at rest).
+  private func syncPullToActive() {
+    if let sv = pageScrollViews[activeIndex]?.value, sv.window != nil {
+      pull = max(0, -adjustedY(of: sv))
+    } else {
+      pull = 0
+    }
+    pullFromDrag = false
+    applyBandTransform()
+  }
+
   // MARK: - Header drag → list scroll
 
   public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
     guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
-    guard let slot = pan.view, slot === headerSlot || slot === tabBarSlot else { return true }
+    guard let slot = pan.view, slot === bandsSlot else { return true }
+    // Which band is under the finger: in the scroll view's own coordinates
+    // (which include its offset) the header is everything above headerHeight.
+    let onHeader: Bool
+    if let bands = bandsScrollView {
+      onHeader = pan.location(in: bands).y < headerHeight
+    } else {
+      onHeader = pan.location(in: slot).y + headerOffset - pull < headerHeight
+    }
     // TRANSLATION, not velocity. This decision is made once per gesture, and
     // velocity is an instantaneous reading — one jitter frame flips it, which
     // is exactly how a wiggled drag ends with both the strip and the page
@@ -1211,7 +1253,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // vertical drags scroll the page, horizontal ones are swallowed (inert by
     // design, but they must still cancel the press underneath). The tab bar
     // takes vertical only.
-    return slot === headerSlot ? true : dy > dx * 1.5
+    return onHeader ? true : dy > dx * 1.5
   }
 
   /// The horizontally scrollable view under this point, if any.
@@ -1243,7 +1285,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                 shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
     if other is UIPanGestureRecognizer, let sv = other.view as? UIScrollView,
-       sv.isDescendant(of: headerSlot) || sv.isDescendant(of: tabBarSlot) {
+       sv !== bandsScrollView, sv.isDescendant(of: bandsSlot) {
       if bandPanIntent == .drive {
         // Our pan already committed; a strip announcing itself late is
         // suspended on the spot.

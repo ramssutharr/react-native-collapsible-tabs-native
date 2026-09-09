@@ -424,7 +424,6 @@ export default function App() {
             label="About ⚡︎"
             onPress={() => tabs.current?.setIndex(2, { animated: false })}
           />
-          <Action label="Bench" onPress={() => setBench(true)} />
         </View>
       </View>
       <CollapsibleTabView
@@ -465,6 +464,7 @@ export default function App() {
           onChange={setAllowFullCollapse}
         />
         <Toggle label="keep chips" value={keepChips} onChange={setKeepChips} />
+        <Action label="Bench" onPress={() => setBench(true)} />
       </View>
     </View>
   );
@@ -539,6 +539,7 @@ const styles = StyleSheet.create({
   about: { fontSize: 15, color: '#333', margin: 16, lineHeight: 22 },
   controls: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-evenly',
     paddingVertical: 6,
     paddingBottom: 24,

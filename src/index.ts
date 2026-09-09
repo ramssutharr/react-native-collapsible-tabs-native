@@ -1,6 +1,6 @@
 export { CollapsibleTabView } from './CollapsibleTabView';
 export type { CollapsibleTabViewProps } from './CollapsibleTabView';
-export { CollapsibleTabsShell, SHELL_HEADER_ID, SHELL_TABBAR_ID, shellPageId } from './CollapsibleTabsShell';
+export { CollapsibleTabsShell, SHELL_BANDS_ID, SHELL_HEADER_ID, SHELL_TABBAR_ID, shellPageId } from './CollapsibleTabsShell';
 export type { CollapsibleTabsShellProps, CollapsibleTabsRef } from './CollapsibleTabsShell';
 export { createTabList, TabFlatList, TabScrollView } from './createTabList';
 export { TabBar } from './TabBar';

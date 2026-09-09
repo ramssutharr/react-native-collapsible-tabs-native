@@ -47,6 +47,9 @@
 /// (and makes sure the host is listening to it). RN-specific, so it lives on
 /// the ObjC++ side.
 @property (nonatomic, copy, nullable) UIScrollView *_Nullable (^scrollViewResolver)(UIView *pageRoot);
+/// Given the mounted bands root (an RN ScrollView component view), returns its
+/// UIScrollView. Not listened to: the shell drives it, it never drives the shell.
+@property (nonatomic, copy, nullable) UIScrollView *_Nullable (^bandsScrollViewResolver)(UIView *bandsRoot);
 @property (nonatomic, copy, nullable) void (^onPageSelected)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onPageRevealed)(NSInteger index);
 @property (nonatomic, copy, nullable) void (^onPageScroll)(NSInteger position, CGFloat offset);
@@ -88,6 +91,12 @@ using namespace facebook::react;
     __weak NativeCollapsibleTabs *weakSelf = self;
     _content.scrollViewResolver = ^UIScrollView *_Nullable(UIView *pageRoot) {
       return [weakSelf resolveScrollViewIn:pageRoot];
+    };
+    _content.bandsScrollViewResolver = ^UIScrollView *_Nullable(UIView *bandsRoot) {
+      if ([bandsRoot isKindOfClass:[RCTScrollViewComponentView class]]) {
+        return ((RCTScrollViewComponentView *)bandsRoot).scrollView;
+      }
+      return nil;
     };
     _content.onPageSelected = ^(NSInteger index) {
       [weakSelf emitPageSelected:index];

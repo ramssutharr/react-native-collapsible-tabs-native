@@ -8,6 +8,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import {
+  ScrollView,
   StyleSheet,
   View,
   type ColorValue,
@@ -25,6 +26,21 @@ import {
 } from './pageScroll';
 import { CollapsibleTabsContext, type CollapsibleTabsContextValue } from './context';
 
+/**
+ * The header and tab bar live inside one non-scrollable React Native
+ * `ScrollView`, and the native shell collapses them by driving THAT scroll
+ * view's content offset rather than by moving re-parented views. The reason
+ * is touch handling, not rendering: `Pressable` decides "is the finger still
+ * on me?" from `measure()`, which on Fabric reads the shadow tree — and the
+ * shadow tree knows nothing about a view native code has moved. A hard press
+ * (3D Touch force changes) or a slightly rolling finger emits touch-moves,
+ * the press "leaves" a rect that is wherever JS laid the tab bar out, and
+ * `onPress` never fires. A ScrollView's offset is the one native position
+ * Fabric does track (via `ScrollViewShadowNode` state, updated by the native
+ * scroll view on every scroll), so buttons in the bands keep working at any
+ * collapse offset.
+ */
+export const SHELL_BANDS_ID = 'tabs-bands';
 export const SHELL_HEADER_ID = 'tabs-header';
 export const SHELL_TABBAR_ID = 'tabs-tabbar';
 export const shellPageId = (index: number) => `tabs-page-${index}`;
@@ -307,22 +323,23 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
         onCollapsedChange={handleCollapsedChange}
         onRefresh={handleRefresh}
       >
-        <View
-          nativeID={SHELL_HEADER_ID}
+        <ScrollView
+          nativeID={SHELL_BANDS_ID}
+          style={styles.bands}
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           collapsable={false}
-          style={styles.band}
-          onLayout={onHeaderLayout}
         >
-          {header}
-        </View>
-        <View
-          nativeID={SHELL_TABBAR_ID}
-          collapsable={false}
-          style={styles.band}
-          onLayout={onTabBarLayout}
-        >
-          {tabBar}
-        </View>
+          <View nativeID={SHELL_HEADER_ID} collapsable={false} onLayout={onHeaderLayout}>
+            {header}
+          </View>
+          <View nativeID={SHELL_TABBAR_ID} collapsable={false} onLayout={onTabBarLayout}>
+            {tabBar}
+          </View>
+        </ScrollView>
         {pages.map((page, i) => (
           <View key={i} nativeID={shellPageId(i)} collapsable={false} style={styles.page}>
             {!lazy || visited.has(i) ? page : null}
@@ -338,10 +355,11 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
-  // Bands and pages are all anchored at the host's origin: their real
-  // placement is the native slot's, and Fabric's own frame for each child
-  // must agree with (0,0) inside that slot.
-  band: {
+  // The bands' scroll view and the pages are all anchored at the host's
+  // origin: their real placement is the native slot's, and Fabric's own frame
+  // for each child must agree with (0,0) inside that slot. The bands scroll
+  // view takes its height from its content (header + tab bar stacked).
+  bands: {
     position: 'absolute',
     top: 0,
     left: 0,
