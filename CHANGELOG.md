@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Example: a **Bench** screen (500-row list + a JS-thread load switch, also
+  reachable through `collapsibletabs://bench?load=1`) and
+  `scripts/bench-android.sh`, which drives it over adb and prints
+  `dumpsys gfxinfo` frame stats. First numbers, from a Galaxy M53 at 120 Hz,
+  in `docs/benchmarks.md`: 0 % janky frames with the JS thread 60 % busy.
 - New: pull-to-refresh is configurable — `refreshThreshold` (dp, default 70),
   `refreshIndicatorOffset` (dp the spinner rests at while refreshing, default
   60), `refreshTintColor`, `refreshBackgroundColor` (the disc behind the

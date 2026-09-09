@@ -22,6 +22,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- collapsibletabs://bench?load=1 — the benchmark screen, driven by
+             scripts/bench-android.sh without taps. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="collapsibletabs" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>

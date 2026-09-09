@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "bench:android": "scripts/bench-android.sh",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",

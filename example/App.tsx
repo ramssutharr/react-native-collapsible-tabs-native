@@ -1,5 +1,12 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
+  Linking,
   Pressable,
   ScrollView,
   StatusBar,
@@ -124,6 +131,143 @@ function Header({ progress }: { progress: SharedValue<number> }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Benchmark screen — see scripts/bench-android.sh and docs/benchmarks.md.
+//
+// The claim under test is "the header stays in the same frame as the list
+// while the JS thread is busy". So: a long, real-looking list under the
+// shell, plus a switch that burns most of every frame on the JS thread. The
+// bench script opens this screen through the `collapsibletabs://bench?load=1`
+// deep link so a run needs no taps.
+// ---------------------------------------------------------------------------
+
+const BENCH_ROUTES = [
+  { key: 'feed', title: 'Feed' },
+  { key: 'more', title: 'More' },
+];
+const BENCH_ROWS = Array.from({ length: 500 }, (_, i) => i);
+/** ms of busy-wait per 16 ms tick while "JS load" is on (~60% of a frame). */
+const BENCH_BUSY_MS = 10;
+const BENCH_COLOURS = ['#5b8def', '#e07a5f', '#3d9970', '#f2c14e', '#8e6bd6'];
+
+function BenchRow({ index }: { index: number }) {
+  return (
+    <View style={styles.row}>
+      <View
+        style={[
+          styles.rowThumb,
+          { backgroundColor: BENCH_COLOURS[index % BENCH_COLOURS.length] },
+        ]}
+      />
+      <View style={styles.benchText}>
+        <Text style={styles.rowLabel}>Item #{index + 1}</Text>
+        <Text style={styles.benchSub} numberOfLines={1}>
+          {index % 3 === 0
+            ? 'Posted a moment near you'
+            : index % 3 === 1
+            ? 'Replied to your comment'
+            : 'Shared a plan for the weekend'}
+        </Text>
+      </View>
+      <Text style={styles.benchCount}>{(index * 37) % 1000}</Text>
+    </View>
+  );
+}
+
+function BenchScreen({
+  load,
+  onLoadChange,
+  onExit,
+}: {
+  load: boolean;
+  onLoadChange: (v: boolean) => void;
+  onExit: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const [beats, setBeats] = useState(0);
+
+  // The JS load: a busy-wait that eats BENCH_BUSY_MS of every 16 ms tick, so
+  // anything that needs the JS thread per frame (a JS-driven header) falls
+  // behind. The heartbeat below is ordinary JS work that keeps running.
+  useEffect(() => {
+    if (!load) {
+      return;
+    }
+    const id = setInterval(() => {
+      const end = Date.now() + BENCH_BUSY_MS;
+      while (Date.now() < end) {
+        // spin
+      }
+    }, 16);
+    return () => clearInterval(id);
+  }, [load]);
+
+  useEffect(() => {
+    const id = setInterval(() => setBeats(b => b + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const navigationState = useMemo(
+    () => ({ index, routes: BENCH_ROUTES }),
+    [index],
+  );
+  const renderHeader = useCallback(
+    () => (
+      <View style={styles.benchHeader}>
+        <View style={styles.avatar} />
+        <Text style={styles.name}>Benchmark</Text>
+        <Text style={styles.bio}>
+          500 rows per tab. Toggle "JS load" to burn {BENCH_BUSY_MS} ms of every
+          frame on the JS thread, then fling. The header must not detach.
+        </Text>
+      </View>
+    ),
+    [],
+  );
+  const renderScene = useCallback(
+    () => (
+      <TabFlatList
+        data={BENCH_ROWS}
+        keyExtractor={item => String(item)}
+        renderItem={({ item }) => <BenchRow index={item} />}
+        initialNumToRender={12}
+        windowSize={7}
+      />
+    ),
+    [],
+  );
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.topBar}>
+        <Text style={styles.topBarTitle}>
+          Bench · JS {load ? 'busy' : 'idle'} · ♥ {beats}
+        </Text>
+        <View style={styles.actions}>
+          <Action
+            label={load ? 'Load: on' : 'Load: off'}
+            onPress={() => onLoadChange(!load)}
+          />
+          <Action label="Exit" onPress={onExit} />
+        </View>
+      </View>
+      <CollapsibleTabView
+        navigationState={navigationState}
+        onIndexChange={setIndex}
+        renderHeader={renderHeader}
+        renderScene={renderScene}
+        tabBarProps={{
+          activeColor: '#111',
+          inactiveColor: '#999',
+          indicatorColor: '#5b8def',
+          scrollEnabled: false,
+        }}
+      />
+    </View>
+  );
+}
+
 function Toggle({
   label,
   value,
@@ -158,6 +302,23 @@ export default function App() {
   const [pinTabBar, setPinTabBar] = useState(true);
   const [allowFullCollapse, setAllowFullCollapse] = useState(true);
   const [keepChips, setKeepChips] = useState(false);
+  const [bench, setBench] = useState(false);
+  const [benchLoad, setBenchLoad] = useState(false);
+
+  // `collapsibletabs://bench?load=1` opens the benchmark screen with the JS
+  // load already on, so the bench script can drive a run without taps.
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      if (!url || !url.includes('bench')) {
+        return;
+      }
+      setBench(true);
+      setBenchLoad(/[?&]load=1/.test(url));
+    };
+    Linking.getInitialURL().then(handle);
+    const sub = Linking.addEventListener('url', e => handle(e.url));
+    return () => sub.remove();
+  }, []);
 
   // The bands' collapse progress, straight from native, on the UI thread.
   const progress = useSharedValue(0);
@@ -238,6 +399,16 @@ export default function App() {
     [],
   );
 
+  if (bench) {
+    return (
+      <BenchScreen
+        load={benchLoad}
+        onLoadChange={setBenchLoad}
+        onExit={() => setBench(false)}
+      />
+    );
+  }
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" />
@@ -253,6 +424,7 @@ export default function App() {
             label="About ⚡︎"
             onPress={() => tabs.current?.setIndex(2, { animated: false })}
           />
+          <Action label="Bench" onPress={() => setBench(true)} />
         </View>
       </View>
       <CollapsibleTabView
@@ -359,6 +531,10 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   rowLabel: { fontSize: 15, color: '#222' },
+  benchHeader: { backgroundColor: '#fff', paddingTop: 8, paddingBottom: 14 },
+  benchText: { flex: 1 },
+  benchSub: { fontSize: 13, color: '#777', marginTop: 2 },
+  benchCount: { fontSize: 13, color: '#999', marginLeft: 12 },
   hint: { fontSize: 13, color: '#888', margin: 16, lineHeight: 19 },
   about: { fontSize: 15, color: '#333', margin: 16, lineHeight: 22 },
   controls: {

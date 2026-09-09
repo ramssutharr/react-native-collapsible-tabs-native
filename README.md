@@ -35,6 +35,11 @@ between the tab bar and the content on a fast fling, worst on Android and on
 iOS whenever the JS thread is busy. This library removes the second update
 path instead of trying to keep up with it.
 
+Measured, not asserted: on a mid-range 120 Hz Android phone with the JS thread
+60 % busy, flinging a 500-row list gives 0 % janky frames and a p99 of 12 ms —
+see [docs/benchmarks.md](docs/benchmarks.md) for the method, the device and
+how to re-run it.
+
 ## What it does
 
 - Collapsing header + pinned tab bar over a native horizontal pager, in
