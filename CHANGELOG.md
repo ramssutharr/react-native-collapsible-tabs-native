@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 — 2026-09-10
 
 - Fix: a hairline of header showed above the pinned tab bar once collapsed
   (visible from 0.8.0, where header and tab bar stack inside one scroll
