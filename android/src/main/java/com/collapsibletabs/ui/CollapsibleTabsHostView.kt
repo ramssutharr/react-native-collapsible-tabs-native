@@ -219,8 +219,11 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
 
     // MARK: - Props
 
-    fun setHeaderHeightDp(dp: Int) {
-        val px = (dp * density).toInt()
+    // Math.round, not truncation: Yoga snaps every RN layout to the pixel grid
+    // by rounding, so this is the only conversion that lands the bands' scroll
+    // on the same pixel row as the tab bar's laid-out top.
+    fun setHeaderHeightDp(dp: Float) {
+        val px = Math.round(dp * density)
         if (px == headerHeightPx) return
         headerHeightPx = px
         resyncOffsetToActive()
@@ -242,7 +245,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     }
 
     fun setHeaderMinHeightDp(dp: Int) {
-        val px = (dp * density).toInt()
+        val px = Math.round(dp * density)
         if (px == headerMinHeightPx) return
         headerMinHeightPx = px
         resyncOffsetToActive()
@@ -263,8 +266,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         applyCollapseSlackToAll()
     }
 
-    fun setTabBarHeightDp(dp: Int) {
-        val px = (dp * density).toInt()
+    fun setTabBarHeightDp(dp: Float) {
+        val px = Math.round(dp * density)
         if (px == tabBarHeightPx) return
         tabBarHeightPx = px
         requestLayout()

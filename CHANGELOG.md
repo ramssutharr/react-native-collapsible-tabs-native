@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Fix: a hairline of header showed above the pinned tab bar once collapsed
+  (visible from 0.8.0, where header and tab bar stack inside one scroll
+  view). The shell rounded the measured band heights to whole dp before
+  handing them to native, so a 223.33 pt header collapsed by 223 and left
+  0.33 pt of itself in view. `headerHeight` / `tabBarHeight` are now exact
+  (`Float`), pages pad by the exact sum, and Android converts to pixels by
+  rounding, the way Yoga snaps layout to the pixel grid.
+
 ## 0.8.0 — 2026-09-09
 
 - Fix: buttons in the header and tab bar dropped presses whenever the bands

@@ -152,12 +152,15 @@ export const CollapsibleTabsShell = forwardRef<CollapsibleTabsRef, CollapsibleTa
   const [headerHeight, setHeaderHeight] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(0);
 
+  // Exact heights, never rounded: native scrolls the bands by exactly this
+  // much, and pages pad by exactly this much. Rounding here left a sub-pixel
+  // sliver of header visible above the pinned tab bar.
   const onHeaderLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
+    const h = e.nativeEvent.layout.height;
     setHeaderHeight((prev) => (prev === h ? prev : h));
   }, []);
   const onTabBarLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
+    const h = e.nativeEvent.layout.height;
     setTabBarHeight((prev) => (prev === h ? prev : h));
   }, []);
 

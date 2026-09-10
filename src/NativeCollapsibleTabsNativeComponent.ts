@@ -59,10 +59,15 @@ type HeaderOffsetChangeEvent = Readonly<{
 type RefreshEvent = Readonly<{}>;
 
 export interface NativeProps extends ViewProps {
-  /** Measured height (dp) of the `tabs-header` child. */
-  headerHeight: CodegenTypes.Int32;
-  /** Measured height (dp) of the `tabs-tabbar` child. */
-  tabBarHeight: CodegenTypes.Int32;
+  /**
+   * Measured height (dp) of the `tabs-header` child — EXACT, not rounded.
+   * The header and tab bar stack inside one scroll view that the shell
+   * scrolls by this amount; a rounded value leaves a sub-pixel sliver of
+   * header showing above the pinned tab bar (a hairline on 3× screens).
+   */
+  headerHeight: CodegenTypes.Float;
+  /** Measured height (dp) of the `tabs-tabbar` child, exact. */
+  tabBarHeight: CodegenTypes.Float;
   /** Number of `tabs-page-<i>` children. */
   pageCount: CodegenTypes.Int32;
   /** Active page; changing it animates the pager (tab press / jump). */

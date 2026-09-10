@@ -102,12 +102,12 @@ class CollapsibleTabsViewManager(
     // MARK: - Props
 
     @ReactProp(name = "headerHeight")
-    override fun setHeaderHeight(view: CollapsibleTabsHostView, value: Int) {
+    override fun setHeaderHeight(view: CollapsibleTabsHostView, value: Float) {
         view.setHeaderHeightDp(value)
     }
 
     @ReactProp(name = "tabBarHeight")
-    override fun setTabBarHeight(view: CollapsibleTabsHostView, value: Int) {
+    override fun setTabBarHeight(view: CollapsibleTabsHostView, value: Float) {
         view.setTabBarHeightDp(value)
     }
 
