@@ -44,6 +44,8 @@ import {
  *   the buttons in the top bar, and "tap the active tab again → top"
  * - a header that reacts to its own collapse (avatar shrinks, bio fades)
  *   from onHeaderOffsetChange — a Reanimated worklet, zero JS per frame
+ * - a "Top" pill that appears once the active list is scrolled deep, from
+ *   onScrollOffsetChange — the same kind of worklet, reading the list offset
  * - headerMinHeight: the chip row stays as a pinned strip ("keep chips")
  */
 
@@ -338,6 +340,26 @@ export default function App() {
     [progress],
   );
 
+  // The active list's own offset, straight from native on the UI thread: a
+  // scroll-to-top pill that fades in once the list is scrolled well past the
+  // header, without a single JS frame.
+  const listOffset = useSharedValue(0);
+  const onScrollOffsetChange = useEvent<{ index: number; offset: number }>(
+    event => {
+      'worklet';
+      listOffset.value = event.offset;
+    },
+    ['topScrollOffsetChange', 'onScrollOffsetChange'],
+  );
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      listOffset.value,
+      [400, 600],
+      [0, 1],
+      Extrapolation.CLAMP,
+    ),
+  }));
+
   const navigationState = useMemo(() => ({ index, routes: ROUTES }), [index]);
 
   // Tapping the ACTIVE tab again scrolls it to the top — the affordance the
@@ -442,6 +464,7 @@ export default function App() {
         allowFullCollapse={allowFullCollapse}
         headerMinHeight={keepChips ? CHIP_STRIP_HEIGHT : 0}
         onHeaderOffsetChange={onHeaderOffsetChange}
+        onScrollOffsetChange={onScrollOffsetChange}
         collapseThreshold={80}
         onCollapsedChange={setCollapsed}
         tabBarProps={{
@@ -451,6 +474,14 @@ export default function App() {
           scrollEnabled: false,
         }}
       />
+      <Animated.View style={[styles.pill, pillStyle]} pointerEvents="box-none">
+        <Pressable
+          style={styles.pillButton}
+          onPress={() => tabs.current?.scrollToTop()}
+        >
+          <Text style={styles.pillLabel}>↑ Top</Text>
+        </Pressable>
+      </Animated.View>
       <View style={styles.controls}>
         <Toggle
           label="direction mode"
@@ -547,6 +578,18 @@ const styles = StyleSheet.create({
     borderTopColor: '#ddd',
     backgroundColor: '#fff',
   },
+  pill: {
+    position: 'absolute',
+    right: 16,
+    bottom: 96,
+  },
+  pillButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#111',
+  },
+  pillLabel: { color: '#fff', fontSize: 13, fontWeight: '600' },
   toggle: { alignItems: 'center', gap: 2 },
   toggleLabel: { fontSize: 11, color: '#666' },
 });

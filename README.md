@@ -89,13 +89,14 @@ roadmap fine print:
 
 - **New Architecture (Fabric) only.** No Paper support. React Native ≥ 0.80
   (developed and tested on RN 0.83).
-- The **list** scroll position is not readable from JS. What you get per
-  frame is opt-in and meant for a Reanimated worklet: the pager's swipe
-  position (`onPageScroll`) and the bands' offset (`onHeaderOffsetChange`).
-  Nothing per-frame reaches the JS thread unless you pass a plain function.
-  You can *drive* positions through the `ref` (`scrollToTop`, `collapse`,
-  `expand`, `setIndex`); reading them back (for save/restore) is not there
-  yet.
+- Per-frame positions are opt-in and meant for a Reanimated worklet: the
+  pager's swipe position (`onPageScroll`), the bands' offset
+  (`onHeaderOffsetChange`) and the active list's own offset
+  (`onScrollOffsetChange`). Nothing per-frame reaches the JS thread unless
+  you pass a plain function. There is no synchronous "read the position now"
+  call, and no built-in save/restore across remounts yet; you can *drive*
+  positions through the `ref` (`scrollToTop`, `collapse`, `expand`,
+  `setIndex`).
 - `onPageScroll` with RN `Animated.event` + `useNativeDriver: true` does
   **not** work, and cannot: on Fabric, native-driven animated events only
   reach the animated module through a deprecated back-channel React Native
@@ -241,6 +242,7 @@ the bundled `TabScrollView` / `TabFlatList`) do this for you; or read
 | `collapseMode` | `'classic' \| 'direction'` | `'classic'` (default): header returns as content nears the top. `'direction'`: any up-scroll reveals it, any down-scroll hides it |
 | `headerMinHeight` | `number` (dp) | default `0`. Bottom strip of the header that stays pinned above the tab bar (a search bar, a filter row) instead of scrolling away. The tab bar necessarily stays too, so `pinTabBar={false}` is ignored while this is > 0 |
 | `onHeaderOffsetChange` | Reanimated `useEvent` handler, or `(e) => void` | the bands' live offset while they move — `{ offset, collapsibleHeight, pull }` in dp; `offset / collapsibleHeight` is the 0..1 progress. For a header that reacts to its own collapse (avatar shrink, title fade, cover parallax). Same contract as `onPageScroll`: a worklet reads it on the UI thread; a plain function costs a JS call per frame. Emitted only while a handler is set, and only on change |
+| `onScrollOffsetChange` | Reanimated `useEvent` handler, or `(e) => void` | the active list's live scroll offset — `{ index, offset }`, dp from its content top (0 = header open, `collapsibleHeight` = collapsed, larger = scrolled on; negative on an over-drag), per frame while it moves and once when the active page changes. Same contract as `onHeaderOffsetChange`. For parallax deeper in the page, a scroll-to-top pill, a progress bar |
 | `pinTabBar` | `boolean` | default **`true`**: the tab bar stays pinned at the top once the header is gone. `false`: the whole band, tabs included, collapses as part of the header |
 | `allowFullCollapse` | `boolean` | default **`true`**. Tabs too short to scroll collapse the header anyway — native gives such a page exactly the scroll range it lacks; tabs with enough content are untouched. `false` restores the old behaviour |
 | `onCollapsedChange` | `(collapsed) => void` | fires on crossings only |
@@ -323,6 +325,27 @@ const avatarStyle = useAnimatedStyle(() => ({
 ```
 
 The shell writes the value from the same native callback that moves the bands, and the worklet styles read it on the UI thread — the header reacts without a JS frame. `pull` is the over-drag past the top on iOS (0 on Android, where the refresh layout owns it), for stretch effects.
+
+### Reading the list offset (parallax, scroll-to-top pill)
+
+```tsx
+const y = useSharedValue(0);
+const onScrollOffsetChange = useEvent<{ index: number; offset: number }>(
+  (e) => {
+    'worklet';
+    y.value = e.offset;
+  },
+  ['topScrollOffsetChange', 'onScrollOffsetChange'],
+);
+const pillStyle = useAnimatedStyle(() => ({ opacity: y.value > 600 ? 1 : 0 }));
+
+<CollapsibleTabView onScrollOffsetChange={onScrollOffsetChange} … />
+```
+
+The value is the active list's own offset from its content top, read in the
+same native callback that moves the bands, so anything you derive from it
+moves in the same frame as the header. It fires once more whenever the
+active page changes, with that page's offset.
 
 ### `createTabList(List)`
 

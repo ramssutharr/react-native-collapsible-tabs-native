@@ -81,6 +81,26 @@ class TabsHeaderOffsetChangeEvent(
     companion object { const val NAME = "topHeaderOffsetChange" }
 }
 
+/**
+ * The active list's live scroll offset (dp). Per frame while it moves, only
+ * while `scrollOffsetEnabled`, and only on change.
+ */
+class TabsScrollOffsetChangeEvent(
+    surfaceId: Int,
+    viewTag: Int,
+    private val index: Int,
+    private val offset: Float,
+) : Event<TabsScrollOffsetChangeEvent>(surfaceId, viewTag) {
+    override fun getEventName(): String = NAME
+    override fun canCoalesce(): Boolean = true
+    override fun getEventData(): WritableMap = Arguments.createMap().apply {
+        putInt("index", index)
+        putDouble("offset", offset.toDouble())
+    }
+
+    companion object { const val NAME = "topScrollOffsetChange" }
+}
+
 /** The user pulled to refresh from the top of the container. */
 class TabsRefreshEvent(surfaceId: Int, viewTag: Int) :
     Event<TabsRefreshEvent>(surfaceId, viewTag) {

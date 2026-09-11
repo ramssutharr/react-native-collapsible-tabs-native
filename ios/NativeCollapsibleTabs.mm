@@ -25,6 +25,7 @@
 - (void)setPinTabBar:(BOOL)pinned;
 - (void)setHeaderMinHeight:(CGFloat)height;
 - (void)setHeaderOffsetEnabled:(BOOL)enabled;
+- (void)setScrollOffsetEnabled:(BOOL)enabled;
 - (void)setRefreshing:(BOOL)refreshing;
 - (void)setRefreshEnabled:(BOOL)enabled;
 - (void)setRefreshThreshold:(CGFloat)value;
@@ -56,6 +57,7 @@
 @property (nonatomic, copy, nullable) void (^onCollapsedChange)(BOOL collapsed);
 @property (nonatomic, copy, nullable) void (^onHeaderOffsetChange)(CGFloat offset, CGFloat collapsibleHeight, CGFloat pull);
 @property (nonatomic, copy, nullable) void (^onRefresh)(void);
+@property (nonatomic, copy, nullable) void (^onScrollOffsetChange)(NSInteger index, CGFloat offset);
 /// Cancels React's in-flight JS touches (so a Pressable under the finger does
 /// not fire when a scroll/drag starts). RN-specific, provided by the host.
 @property (nonatomic, copy, nullable) void (^cancelReactTouches)(void);
@@ -115,6 +117,9 @@ using namespace facebook::react;
     };
     _content.onRefresh = ^{
       [weakSelf emitRefresh];
+    };
+    _content.onScrollOffsetChange = ^(NSInteger index, CGFloat offset) {
+      [weakSelf emitScrollOffset:index offset:offset];
     };
     _content.cancelReactTouches = ^{
       [weakSelf cancelReactTouches];
@@ -258,6 +263,15 @@ using namespace facebook::react;
                                  .pull = static_cast<Float>(pull)});
 }
 
+- (void)emitScrollOffset:(NSInteger)index offset:(CGFloat)offset
+{
+  if (_eventEmitter == nullptr) {
+    return;
+  }
+  auto emitter = std::static_pointer_cast<const NativeCollapsibleTabsEventEmitter>(_eventEmitter);
+  emitter->onScrollOffsetChange({.index = static_cast<int>(index), .offset = static_cast<Float>(offset)});
+}
+
 - (void)emitRefresh
 {
   if (_eventEmitter == nullptr) {
@@ -339,6 +353,9 @@ using namespace facebook::react;
   }
   if (oldProps == nullptr || newProps.headerOffsetEnabled != previousProps.headerOffsetEnabled) {
     [_content setHeaderOffsetEnabled:newProps.headerOffsetEnabled];
+  }
+  if (oldProps == nullptr || newProps.scrollOffsetEnabled != previousProps.scrollOffsetEnabled) {
+    [_content setScrollOffsetEnabled:newProps.scrollOffsetEnabled];
   }
   if (oldProps == nullptr || newProps.pageScrollEnabled != previousProps.pageScrollEnabled) {
     [_content setPageScrollEnabled:newProps.pageScrollEnabled];

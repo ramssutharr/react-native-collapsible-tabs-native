@@ -2,7 +2,12 @@ import React, { forwardRef, useCallback, useMemo, useState, type ReactNode } fro
 import { Animated, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 
 import { CollapsibleTabsShell, type CollapsibleTabsRef } from './CollapsibleTabsShell';
-import { isWorkletHandler, type HeaderOffsetHandler, type PageScrollHandler } from './pageScroll';
+import {
+  isWorkletHandler,
+  type HeaderOffsetHandler,
+  type PageScrollHandler,
+  type ScrollOffsetHandler,
+} from './pageScroll';
 import { TabBar, type TabBarProps } from './TabBar';
 import type { Route } from './types';
 
@@ -122,6 +127,26 @@ export type CollapsibleTabViewProps<T extends Route = Route> = {
    * ```
    */
   onHeaderOffsetChange?: HeaderOffsetHandler;
+  /**
+   * The active list's live scroll offset (dp from its content top: 0 = header
+   * open, `collapsibleHeight` = collapsed, larger = scrolled on; negative on
+   * an over-drag), per frame while it moves, plus once whenever the active
+   * page changes — `{ index, offset }`. Read from the same native callback
+   * that moves the bands. Same contract as `onHeaderOffsetChange`: a
+   * Reanimated `useEvent` worklet reads it on the UI thread; a plain function
+   * costs a JS call per frame. For parallax deeper in the page, a
+   * scroll-to-top pill, a reading-progress bar. Emitted only while a handler
+   * is set.
+   *
+   * ```tsx
+   * const y = useSharedValue(0);
+   * const onScrollOffsetChange = useEvent(e => {
+   *   'worklet';
+   *   y.value = e.offset;
+   * }, ['topScrollOffsetChange']);
+   * ```
+   */
+  onScrollOffsetChange?: ScrollOffsetHandler;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -159,6 +184,7 @@ function CollapsibleTabViewInner<T extends Route>(
   onPageScroll,
   headerMinHeight = 0,
   onHeaderOffsetChange,
+  onScrollOffsetChange,
   style,
   }: CollapsibleTabViewProps<T>,
   ref: React.ForwardedRef<CollapsibleTabsRef>,
@@ -214,6 +240,7 @@ function CollapsibleTabViewInner<T extends Route>(
       onPageScroll={pageScroll}
       headerMinHeight={headerMinHeight}
       onHeaderOffsetChange={onHeaderOffsetChange}
+      onScrollOffsetChange={onScrollOffsetChange}
       refreshing={refreshing}
       onRefresh={onRefresh}
       refreshThreshold={refreshThreshold}

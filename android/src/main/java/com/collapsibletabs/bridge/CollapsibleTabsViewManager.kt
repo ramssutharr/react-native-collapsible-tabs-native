@@ -60,6 +60,9 @@ class CollapsibleTabsViewManager(
         view.onRefresh = {
             dispatcher()?.dispatchEvent(TabsRefreshEvent(surfaceId(), view.id))
         }
+        view.onScrollOffsetChange = { index, offset ->
+            dispatcher()?.dispatchEvent(TabsScrollOffsetChangeEvent(surfaceId(), view.id, index, offset))
+        }
     }
 
     // Commands arrive by name; the codegen delegate parses the args and calls
@@ -97,6 +100,7 @@ class CollapsibleTabsViewManager(
             TabsCollapsedChangeEvent.NAME to mapOf("registrationName" to "onCollapsedChange"),
             TabsHeaderOffsetChangeEvent.NAME to mapOf("registrationName" to "onHeaderOffsetChange"),
             TabsRefreshEvent.NAME to mapOf("registrationName" to "onRefresh"),
+            TabsScrollOffsetChangeEvent.NAME to mapOf("registrationName" to "onScrollOffsetChange"),
         )
 
     // MARK: - Props
@@ -154,6 +158,11 @@ class CollapsibleTabsViewManager(
     @ReactProp(name = "headerOffsetEnabled")
     override fun setHeaderOffsetEnabled(view: CollapsibleTabsHostView, value: Boolean) {
         view.setHeaderOffsetEnabled(value)
+    }
+
+    @ReactProp(name = "scrollOffsetEnabled")
+    override fun setScrollOffsetEnabled(view: CollapsibleTabsHostView, value: Boolean) {
+        view.setScrollOffsetEnabled(value)
     }
 
     @ReactProp(name = "pageScrollEnabled")

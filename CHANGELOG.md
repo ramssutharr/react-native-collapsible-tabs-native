@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- New: `onScrollOffsetChange` — the active list's live scroll offset
+  (`{ index, offset }`, dp from its content top; negative on an over-drag),
+  per frame while it moves and once whenever the active page changes. Read
+  from the same native callback that moves the bands, and emitted only while
+  a handler is set. Same contract as `onHeaderOffsetChange`: pass a
+  Reanimated `useEvent` worklet (`'topScrollOffsetChange'`) and nothing per
+  frame reaches the JS thread. Closes the "list scroll position is not
+  readable" limitation — for parallax deeper in the page, a scroll-to-top
+  pill, a reading-progress bar.
+- Fix (iOS, regression in 0.8.1): a tab opened after scrolling another one
+  could stay blank until touched. 0.8.1 made the band heights exact
+  (fractional) points, and UIKit snaps a scroll view's offset to the pixel
+  grid when it is set — so the neighbour-page sync that hides a page until
+  it has reached the header offset compared 223.333… against a readback a
+  hair short and never passed. Every "reached" check now carries a half-point
+  tolerance, and a header derived from a list parked at the collapse point
+  snaps onto it — otherwise it counted as "not fully collapsed", which is the
+  test that lets a neighbouring page keep a deeper scroll, so swiping away
+  and back reset the list you had scrolled.
+
 ## 0.8.1 — 2026-09-10
 
 - Fix: a hairline of header showed above the pinned tab bar once collapsed

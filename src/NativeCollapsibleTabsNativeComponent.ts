@@ -54,6 +54,17 @@ type HeaderOffsetChangeEvent = Readonly<{
   pull: CodegenTypes.Float;
 }>;
 
+type ScrollOffsetChangeEvent = Readonly<{
+  /** The page whose list this is — always the active one. */
+  index: CodegenTypes.Int32;
+  /**
+   * The active list's own scroll offset, dp, measured from its content top
+   * (so 0 = header fully open; `collapsibleHeight` = fully collapsed; larger
+   * = scrolled on past it). Negative during an over-drag / bounce.
+   */
+  offset: CodegenTypes.Float;
+}>;
+
 // Codegen requires an empty event payload to be spelled exactly this way.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type RefreshEvent = Readonly<{}>;
@@ -139,6 +150,8 @@ export interface NativeProps extends ViewProps {
   pageScrollEnabled?: CodegenTypes.WithDefault<boolean, false>;
   /** Arms `onHeaderOffsetChange` (per frame while the bands move); derived from the handler's presence. */
   headerOffsetEnabled?: CodegenTypes.WithDefault<boolean, false>;
+  /** Arms `onScrollOffsetChange` (per frame while the active list moves); derived from the handler's presence. */
+  scrollOffsetEnabled?: CodegenTypes.WithDefault<boolean, false>;
 
   onPageSelected?: CodegenTypes.DirectEventHandler<PageSelectedEvent>;
   /**
@@ -164,6 +177,15 @@ export interface NativeProps extends ViewProps {
    */
   onHeaderOffsetChange?: CodegenTypes.DirectEventHandler<HeaderOffsetChangeEvent>;
   onRefresh?: CodegenTypes.DirectEventHandler<RefreshEvent>;
+  /**
+   * The active list's live scroll offset, per frame while it moves, while
+   * `scrollOffsetEnabled` — read from the same native callback that moves
+   * the bands. Intended for a Reanimated `useEvent` worklet (parallax deeper
+   * in the page, a scroll-to-top pill, progress bars) so nothing per frame
+   * reaches the JS thread. Emitted only on change, and once more whenever
+   * the active page changes.
+   */
+  onScrollOffsetChange?: CodegenTypes.DirectEventHandler<ScrollOffsetChangeEvent>;
 }
 
 type ComponentType = HostComponent<NativeProps>;

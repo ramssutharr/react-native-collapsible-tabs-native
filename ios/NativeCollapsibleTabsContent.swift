@@ -49,6 +49,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// `headerOffsetEnabled`; emitted only when the value changes.
   @objc public var onHeaderOffsetChange: ((CGFloat, CGFloat, CGFloat) -> Void)?
   @objc public var onRefresh: (() -> Void)?
+  /// The active list's scroll offset (pt from its content top), per frame
+  /// while `scrollOffsetEnabled`; only on change.
+  @objc public var onScrollOffsetChange: ((Int, CGFloat) -> Void)?
   /// Provided by the host: cancels React's in-flight JS touches so a press
   /// under the finger never fires once a scroll or drag has begun.
   @objc public var cancelReactTouches: (() -> Void)?
@@ -86,6 +89,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var headerMinHeight: CGFloat = 0
   /// Arms the per-frame `onHeaderOffsetChange`; off unless something listens.
   private var headerOffsetEnabled = false
+  /// Arms the per-frame `onScrollOffsetChange`; off unless something listens.
+  private var scrollOffsetEnabled = false
+  private var lastEmittedScrollOffset: CGFloat = .nan
 
   /// How far the bands travel before they are gone. A minimum keeps the
   /// header's bottom strip on screen — and with it the tab bar below, so an
@@ -183,6 +189,25 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var refreshThreshold: CGFloat = 70
   /// How far the list is held open while refreshing (`refreshIndicatorOffset`).
   private var refreshBand: CGFloat = 60
+  /// Tolerance for "has this list reached that offset". Band heights are
+  /// exact (fractional) points now, and UIKit snaps a scroll view's offset to
+  /// the pixel grid when it is set — so a target of 223.333… reads back a
+  /// hair short, and a strict comparison never passes: the page stays hidden
+  /// behind its pending sync until something else re-evaluates it.
+  private static let pixelSlop: CGFloat = 0.5
+
+  /// The band offset a list offset maps to in classic mode: clamped to the
+  /// travel, and SNAPPED onto its ends when within a pixel of them. A page
+  /// parked at the collapse point reads back a hair under it (pixel grid), and
+  /// a header derived from that raw value would count as "not fully
+  /// collapsed" — which is the test that lets a neighbouring page keep a
+  /// deeper scroll. Without the snap, swiping away and back reset the list.
+  private func bandOffset(for y: CGFloat) -> CGFloat {
+    let clamped = min(max(y, 0), collapsibleHeight)
+    if clamped >= collapsibleHeight - Self.pixelSlop { return collapsibleHeight }
+    if clamped <= Self.pixelSlop { return 0 }
+    return clamped
+  }
   private static let syncGiveUp: TimeInterval = 0.4
   private static let maxSyncRetries = 5
 
@@ -257,6 +282,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     if value { emitHeaderOffset(force: true) }
   }
 
+  @objc public func setScrollOffsetEnabled(_ value: Bool) {
+    scrollOffsetEnabled = value
+    if value { emitScrollOffset(force: true) }
+  }
+
   @objc public func setAllowFullCollapse(_ value: Bool) {
     guard value != allowFullCollapse else { return }
     allowFullCollapse = value
@@ -289,7 +319,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       // 0 <= offset <= min(y, headerHeight).
       setHeaderOffsetNow(min(headerOffset, collapsibleHeight, max(y, 0)))
     } else {
-      setHeaderOffsetNow(min(max(y, 0), collapsibleHeight))
+      setHeaderOffsetNow(bandOffset(for: y))
     }
   }
 
@@ -462,6 +492,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     pendingCollapse = false
     lastEmittedOffset = -1
     lastEmittedPull = -1
+    lastEmittedScrollOffset = .nan
     fling?.stop()
     fling = nil
     refreshing = false
@@ -653,6 +684,18 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   private var lastEmittedOffset: CGFloat = -1
   private var lastEmittedPull: CGFloat = -1
 
+  /// The active list's own offset, one event per CHANGE. Read from the same
+  /// callback that moves the bands, so a consumer's parallax can never be a
+  /// frame apart from the header either.
+  private func emitScrollOffset(force: Bool = false) {
+    guard scrollOffsetEnabled else { return }
+    guard let sv = pageScrollViews[activeIndex]?.value, sv.window != nil else { return }
+    let y = adjustedY(of: sv)
+    guard force || y != lastEmittedScrollOffset else { return }
+    lastEmittedScrollOffset = y
+    onScrollOffsetChange?(activeIndex, y)
+  }
+
   /// One event per CHANGE of the band position, never per frame at rest.
   private func emitHeaderOffset(force: Bool = false) {
     guard headerOffsetEnabled else { return }
@@ -679,9 +722,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     // clamped to what is left. Following that here would spring the header
     // open the moment a tab's content mounts. Re-apply the page's slack and
     // put the offset back instead.
-    if allowFullCollapse, y < headerOffset, maxOffset(of: scrollView) < headerOffset {
+    if allowFullCollapse, y < headerOffset - Self.pixelSlop,
+       maxOffset(of: scrollView) < headerOffset - Self.pixelSlop {
       applyCollapseSlack(to: scrollView, page: activeIndex)
-      if maxOffset(of: scrollView) >= headerOffset {
+      if maxOffset(of: scrollView) >= headerOffset - Self.pixelSlop {
         let restored = headerOffset - scrollView.adjustedContentInset.top
           + refreshInsetApplied(to: scrollView)
         scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: restored)
@@ -698,7 +742,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       let dy = y - lastActiveY
       target = y <= 0 ? 0 : min(max(headerOffset + dy, 0), collapsibleHeight)
     } else {
-      target = min(max(y, 0), collapsibleHeight)
+      target = bandOffset(for: y)
     }
     lastActiveY = y
     // A programmatic collapse in direction mode: the delta alone would leave
@@ -710,7 +754,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
     // While the active page is still catching up to the header (content
     // mounting), a clamped offset must not pop the header open.
-    if pendingSync[activeIndex] != nil, target < headerOffset { return }
+    if pendingSync[activeIndex] != nil, target < headerOffset - Self.pixelSlop { return }
     pull = max(0, -adjustedY(of: scrollView))
     // Arm the spinner only for an over-drag that a finger started; once the
     // list is back at its top the arming is spent, so the next fling-bounce
@@ -721,6 +765,7 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       pullFromDrag = false
     }
     setHeaderOffsetNow(target)
+    emitScrollOffset()
   }
 
   /// `adjustedY`, held inside the page's real scroll range.
@@ -917,10 +962,11 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       // Content stays visible only where the page's scroll matches the offset.
       desired = headerOffset
     } else {
-      desired = headerOffset >= collapsibleHeight ? max(current, collapsibleHeight) : headerOffset
+      desired = headerOffset >= collapsibleHeight - Self.pixelSlop
+        ? max(current, collapsibleHeight) : headerOffset
     }
     if current != desired { sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired) }
-    setPendingSync(page, sv.contentOffset.y < desired ? desired : nil)
+    setPendingSync(page, sv.contentOffset.y < desired - Self.pixelSlop ? desired : nil)
   }
 
   /// A page whose sync is still pending is NOT where the header says it is:
@@ -954,10 +1000,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       return
     }
     applyCollapseSlack(to: sv, page: page)
-    if sv.contentOffset.y < desired {
+    if sv.contentOffset.y < desired - Self.pixelSlop {
       sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired)
     }
-    if sv.contentOffset.y >= desired {
+    if sv.contentOffset.y >= desired - Self.pixelSlop {
       setPendingSync(page, nil)
       if page == activeIndex { giveUpWork?.cancel() }
     } else {
@@ -989,10 +1035,10 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     }
     if allowFullCollapse, let sv = scrollView(for: activeIndex), sv.bounds.height > 0 {
       applyCollapseSlack(to: sv, page: activeIndex)
-      if sv.contentOffset.y < desired {
+      if sv.contentOffset.y < desired - Self.pixelSlop {
         sv.contentOffset = CGPoint(x: sv.contentOffset.x, y: desired)
       }
-      if sv.contentOffset.y >= desired {
+      if sv.contentOffset.y >= desired - Self.pixelSlop {
         setPendingSync(activeIndex, nil)
         syncRetries = 0
         return
@@ -1038,9 +1084,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
     let target: CGFloat
     if directionMode {
       // Only concede when the page cannot hold the current offset.
-      target = y < headerOffset ? min(max(y, 0), collapsibleHeight) : headerOffset
+      target = y < headerOffset - Self.pixelSlop ? bandOffset(for: y) : headerOffset
     } else {
-      target = min(max(y, 0), collapsibleHeight)
+      target = bandOffset(for: y)
     }
     if target != headerOffset { animateHeaderOffset(to: target) }
   }
@@ -1103,6 +1149,8 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
       lastEmittedIndex = index
       onPageSelected?(index)
     }
+    // A new page, a new offset — even if it happens to equal the last one.
+    emitScrollOffset(force: true)
   }
 
   public func scrollViewDidScroll(_ scrollView: UIScrollView) {

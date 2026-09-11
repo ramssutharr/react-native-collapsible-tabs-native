@@ -70,6 +70,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
      *  [headerOffsetEnabled]; emitted only when the value changes. */
     var onHeaderOffsetChange: ((offsetDp: Float, collapsibleHeightDp: Float, pullDp: Float) -> Unit)? = null
     var onRefresh: (() -> Unit)? = null
+    /** The active list's scroll offset in dp, per frame while
+     *  [scrollOffsetEnabled]; emitted only when the value changes. */
+    var onScrollOffsetChange: ((index: Int, offsetDp: Float) -> Unit)? = null
 
     private val density = context.resources.displayMetrics.density
 
@@ -108,6 +111,9 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
     private var headerMinHeightPx = 0
     /** Arms the per-frame [onHeaderOffsetChange]; off unless something listens. */
     private var headerOffsetEnabled = false
+    /** Arms the per-frame [onScrollOffsetChange]; off unless something listens. */
+    private var scrollOffsetEnabled = false
+    private var lastEmittedScrollOffset = Int.MIN_VALUE
     /** Give short pages the scroll range they lack (see [applyCollapseSlack]).
      *  On by default: a tab you cannot scroll is a tab whose header you cannot
      *  collapse, which reads as broken. */
@@ -192,6 +198,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             syncPageToHeader(selectedIndex)
             activeIndex = selectedIndex
             reconcileHeaderToActive()
+            emitScrollOffset(force = true)
         }
     }
 
@@ -258,6 +265,11 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         headerOffsetEnabled = value
         // A listener arriving late still needs the current value once.
         if (value) emitHeaderOffset(force = true)
+    }
+
+    fun setScrollOffsetEnabled(value: Boolean) {
+        scrollOffsetEnabled = value
+        if (value) emitScrollOffset(force = true)
     }
 
     fun setAllowFullCollapse(value: Boolean) {
@@ -642,6 +654,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                 lastEmittedIndex = position
                 onPageSelected?.invoke(position)
             }
+            // A new page, a new offset — even if it equals the last one.
+            emitScrollOffset(force = true)
         }
     }
 
@@ -724,6 +738,7 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             }
             reconcileAnimator?.cancel()
             applyHeaderOffset(target, animated = false)
+            emitScrollOffset()
         }
 
     /**
@@ -1013,6 +1028,19 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         }
         val sv = bandsScrollView ?: return
         if (sv.scrollY != headerOffset) sv.scrollTo(0, headerOffset)
+    }
+
+    /** The active list's own offset, one event per CHANGE — read in the same
+     *  callback that moves the bands, so a consumer's parallax can never be a
+     *  frame apart from the header either. */
+    private fun emitScrollOffset(force: Boolean = false) {
+        if (!scrollOffsetEnabled) return
+        val sv = pageScrollViews.get(activeIndex) ?: return
+        if (!sv.isAttachedToWindow) return
+        val y = sv.scrollY
+        if (!force && y == lastEmittedScrollOffset) return
+        lastEmittedScrollOffset = y
+        onScrollOffsetChange?.invoke(activeIndex, y / density)
     }
 
     private var lastEmittedOffset = -1

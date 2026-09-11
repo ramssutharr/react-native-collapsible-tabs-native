@@ -29,7 +29,12 @@ export type HeaderOffsetHandler =
     }) => void)
   | object;
 
-type AnyHandler = PageScrollHandler | HeaderOffsetHandler | undefined;
+/** Same two shapes, for the shell's per-frame `onScrollOffsetChange`. */
+export type ScrollOffsetHandler =
+  | ((event: { nativeEvent: { index: number; offset: number } }) => void)
+  | object;
+
+type AnyHandler = PageScrollHandler | HeaderOffsetHandler | ScrollOffsetHandler | undefined;
 
 /** Reanimated's `useEvent` returns an object carrying `workletEventHandler`. */
 export const isWorkletHandler = (handler: AnyHandler): boolean =>
