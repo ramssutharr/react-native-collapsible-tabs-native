@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-09-11
 
 - New: `onScrollOffsetChange` — the active list's live scroll offset
   (`{ index, offset }`, dp from its content top; negative on an over-drag),
