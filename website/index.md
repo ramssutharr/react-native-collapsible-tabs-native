@@ -1,5 +1,7 @@
 ---
 layout: home
+title: Native Collapsible Tabs for React Native
+description: Native collapsible tabs for React Native with a collapsing header, pinned tab bar, swipeable pages and FlashList support, driven by UIKit and ViewPager2 so the header and list move in the same frame. iOS and Android, Fabric.
 
 hero:
   name: react-native-collapsible-tabs-native

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress';
 
 const repo = 'https://github.com/ramssutharr/react-native-collapsible-tabs-native';
+const site = 'https://ramssutharr.github.io/react-native-collapsible-tabs-native/';
 
 export default defineConfig({
   title: 'Collapsible Tabs',
@@ -14,17 +15,29 @@ export default defineConfig({
   sitemap: { hostname: 'https://ramssutharr.github.io/react-native-collapsible-tabs-native/' },
   head: [
     ['meta', { name: 'theme-color', content: '#3d6bdb' }],
-    ['meta', { property: 'og:title', content: 'react-native-collapsible-tabs-native' }],
-    [
-      'meta',
-      {
-        property: 'og:description',
-        content:
-          'Collapsing header + pinned tab bar over a native pager, in the same frame as the list. No per-frame JS.',
-      },
-    ],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'react-native-collapsible-tabs-native' }],
     ['link', { rel: 'icon', href: '/react-native-collapsible-tabs-native/favicon.svg', type: 'image/svg+xml' }],
   ],
+  // Per-page canonical URL and Open Graph title/description, from the page's
+  // own frontmatter, so every page tells crawlers which URL is the real one
+  // and shares with its own summary rather than the site-wide one.
+  transformPageData(pageData) {
+    const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
+    const url = `${site}${path}`;
+    const title = pageData.frontmatter.title || pageData.title || 'react-native-collapsible-tabs-native';
+    const description = pageData.frontmatter.description || pageData.description;
+    pageData.frontmatter.head ??= [];
+    pageData.frontmatter.head.push(
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { name: 'twitter:card', content: 'summary' }],
+      ['meta', { name: 'twitter:title', content: title }],
+      ['meta', { name: 'twitter:description', content: description }],
+    );
+  },
   themeConfig: {
     logo: '/favicon.svg',
     siteTitle: 'Collapsible Tabs',
