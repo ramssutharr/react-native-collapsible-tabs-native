@@ -46,11 +46,11 @@ features:
 
 A collapsing header and pinned tab bar over a native pager. The collapse is driven by UIKit and ViewPager2, not by JavaScript or a worklet, so a busy JS thread cannot pull the header away from the content.
 
-## Why not a JS implementation?
+## Why this library uses a native implementation
 
-JS collapsible-tab libraries, including the ones built on Reanimated, move the list content from the native scroll view but move the header from an animation callback fed by that scroll's *event*. Two update paths mean the header runs at least one frame behind the list. You see it as a gap opening between the tab bar and the content on a fast fling, worst on Android and on iOS whenever the JS thread is busy.
+In implementations where the list moves natively while the header is updated through a separate animation path, fed by the scroll *event*, the two updates can become visibly unsynchronised during fast flings, particularly under JS-thread load. It shows as a gap opening between the tab bar and the content, most often on Android and on iOS whenever the JS thread is busy.
 
-This library removes the second update path instead of trying to keep up with it. Read [how it works](/guide/how-it-works) for the mechanism, the [comparison with JS and Reanimated approaches](/guide/alternatives), the [FlashList guide](/guide/flashlist), the [benchmarks](/benchmarks), and [what it does not do](/guide/limitations) before choosing it.
+This library removes the second update path instead of trying to keep up with it: the header is moved inside the same native scroll callback that moved the list, so there is nothing to fall behind. Read [how it works](/guide/how-it-works) for the mechanism, the [comparison with JS and Reanimated approaches](/guide/alternatives), the [FlashList guide](/guide/flashlist), the [benchmarks](/benchmarks), and [what it does not do](/guide/limitations) before choosing it.
 
 ```sh
 yarn add react-native-collapsible-tabs-native
