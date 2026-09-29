@@ -8,3 +8,6 @@ ios/Pods/
 *.xcworkspace
 .DS_Store
 *.log
+website/.vitepress/dist/
+website/.vitepress/cache/
+website/public/*.gif

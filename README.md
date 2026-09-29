@@ -13,6 +13,8 @@ load cannot desynchronise them.
 Your header, tab bar and tab pages are ordinary React components. The native
 side only owns geometry and gestures.
 
+**Docs:** https://ramssutharr.github.io/react-native-collapsible-tabs-native/
+
 <p>
   <a href="https://www.npmjs.com/package/react-native-collapsible-tabs-native"><img src="https://img.shields.io/npm/v/react-native-collapsible-tabs-native.svg" alt="npm version" /></a>
   <a href="https://github.com/ramssutharr/react-native-collapsible-tabs-native/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/react-native-collapsible-tabs-native.svg" alt="license" /></a>

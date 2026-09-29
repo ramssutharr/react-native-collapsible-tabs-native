@@ -50,7 +50,7 @@
   "bugs": {
     "url": "https://github.com/ramssutharr/react-native-collapsible-tabs-native/issues"
   },
-  "homepage": "https://github.com/ramssutharr/react-native-collapsible-tabs-native#readme",
+  "homepage": "https://ramssutharr.github.io/react-native-collapsible-tabs-native/",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },

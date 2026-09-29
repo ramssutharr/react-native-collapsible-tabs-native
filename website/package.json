@@ -1,0 +1,13 @@
+{
+  "name": "react-native-collapsible-tabs-native-website",
+  "private": true,
+  "scripts": {
+    "assets": "cp ../docs/demo-ios.gif ../docs/demo-android.gif public/",
+    "dev": "yarn assets && vitepress dev",
+    "build": "yarn assets && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
