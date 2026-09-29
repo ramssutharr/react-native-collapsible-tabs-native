@@ -6,12 +6,12 @@ import { codegenNativeCommands, codegenNativeComponent } from 'react-native';
  * The native shell: an Instagram/Twitter-style "collapsing header over a tab
  * pager" container owned entirely by the platform.
  *
- * Why native: JS collapsible-tab implementations move the list content from
- * the native scroll view but the header from an animation worklet fed by
- * that scroll's *event*. Two update paths → the header is at least one frame
- * behind the list, which shows as a gap between the tab bar and the content
- * on a fast fling. Here the header is translated from the SAME native scroll
- * callback that moved the content, so the two cannot diverge.
+ * Why native: in architectures where the list moves natively but the header
+ * is updated through a separate animation path fed by the scroll *event*,
+ * the header can fall behind the list during fast flings, particularly under
+ * JS-thread load — a gap between the tab bar and the content. Here the header
+ * is translated from the SAME native scroll callback that moved the content,
+ * so there is no second update path to fall behind.
  *
  * React authors everything visible. Three kinds of children are mounted by
  * Fabric and re-parented natively, identified by `nativeID`:
