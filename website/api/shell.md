@@ -1,4 +1,9 @@
-# `<CollapsibleTabsShell>` and `useCollapsibleTabs()`
+---
+title: CollapsibleTabsShell and useCollapsibleTabs
+description: The low-level native shell primitive behind CollapsibleTabView, and the hook that exposes the header padding and active index to custom tab bodies.
+---
+
+# `CollapsibleTabsShell` and `useCollapsibleTabs()`
 
 ## `<CollapsibleTabsShell>`
 

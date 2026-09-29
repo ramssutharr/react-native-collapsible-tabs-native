@@ -1,3 +1,8 @@
+---
+title: Per-frame Events for Reanimated Worklets
+description: onPageScroll, onHeaderOffsetChange and onScrollOffsetChange, per-frame swipe, header and list positions read on the UI thread with Reanimated useEvent.
+---
+
 # Per-frame events
 
 Three things move per frame: the pager during a swipe, the bands during a collapse, and the active list during a scroll. Each is exposed as an event that is **off unless a handler is set**, and each accepts two shapes:

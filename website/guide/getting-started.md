@@ -1,3 +1,8 @@
+---
+title: Getting Started
+description: Install react-native-collapsible-tabs-native, requirements (React Native 0.80+, Fabric), Jest setup and the example app.
+---
+
 # Getting started
 
 ## Requirements

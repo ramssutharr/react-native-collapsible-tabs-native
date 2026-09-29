@@ -1,6 +1,11 @@
-# `createTabList(List)`
+---
+title: createTabList, FlashList and FlatList Integration
+description: createTabList wraps FlashList, FlatList, SectionList, LegendList or ScrollView so it works as a tab page under a native collapsible header in React Native.
+---
 
-Wraps any list component that renders a React Native `ScrollView` so it works as a tab body: its `contentContainerStyle.paddingTop` is increased by the header + tab-bar height the shell reports, because the bands are overlaid on the pager rather than stacked above it. A `paddingTop` of your own is added on top, not replaced.
+# `createTabList`: FlashList and FlatList integration
+
+`createTabList` is how a list becomes a tab page. Wraps any list component that renders a React Native `ScrollView` so it works as a tab body: its `contentContainerStyle.paddingTop` is increased by the header + tab-bar height the shell reports, because the bands are overlaid on the pager rather than stacked above it. A `paddingTop` of your own is added on top, not replaced.
 
 ```ts
 import { createTabList, TabScrollView, TabFlatList } from 'react-native-collapsible-tabs-native';

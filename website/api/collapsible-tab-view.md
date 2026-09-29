@@ -1,6 +1,11 @@
-# `<CollapsibleTabView>`
+---
+title: CollapsibleTabView, React Native Collapsible Tabs API
+description: Props reference for CollapsibleTabView, the main component for a native collapsible header, pinned tab bar and swipeable tab pages in React Native.
+---
 
-The main component: collapsible tabs on the native shell, with a `react-native-tab-view`-like API. Accepts a [`ref`](/api/ref) of type `CollapsibleTabsRef`.
+# `CollapsibleTabView`: React Native collapsible tabs API
+
+`CollapsibleTabView` is the main component for building a native collapsible header, pinned tab bar and swipeable tab layout in React Native. It has a `react-native-tab-view`-like API and accepts a [`ref`](/api/ref) of type `CollapsibleTabsRef`. Start with [Usage](/guide/usage) if you have not used it yet; the [FlashList guide](/guide/flashlist) covers the list side.
 
 ```tsx
 import { CollapsibleTabView } from 'react-native-collapsible-tabs-native';

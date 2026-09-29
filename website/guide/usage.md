@@ -1,3 +1,8 @@
+---
+title: Usage
+description: Build a collapsible header with tabs in React Native, the one padding rule, controlled index, collapse modes, pinning and pull-to-refresh.
+---
+
 # Usage
 
 `CollapsibleTabView` has a `react-native-tab-view`-like API: `navigationState`, `renderScene`, `onIndexChange`, plus `renderHeader` for the collapsing header.

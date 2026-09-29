@@ -1,6 +1,24 @@
-# What it does not do
+---
+title: Limitations & Compatibility
+description: What react-native-collapsible-tabs-native does not do, and which React Native versions, architectures, platforms and list components it supports.
+---
+
+# Limitations & compatibility
 
 Read this before choosing the library. These are real constraints, not roadmap fine print.
+
+## Compatibility
+
+| | |
+| --- | --- |
+| React Native | ≥ 0.80 (developed and tested on 0.83) |
+| Architecture | New Architecture (Fabric) only; no Paper |
+| Platforms | iOS and Android. No web, no Expo Go; Expo dev clients and prebuild work |
+| Lists | anything that renders an RN `ScrollView`: `ScrollView`, `FlatList`, `SectionList`, FlashList v2, LegendList |
+| Reanimated | optional peer, only imported when you pass a worklet handler |
+| TypeScript | types shipped; the package is untranspiled TS (add it to Jest's `transformIgnorePatterns`) |
+
+## What it does not do
 
 - **New Architecture (Fabric) only.** No Paper support. React Native ≥ 0.80 (developed and tested on RN 0.83).
 - **Per-frame positions are opt-in and meant for a Reanimated worklet**: the pager's swipe position (`onPageScroll`), the bands' offset (`onHeaderOffsetChange`) and the active list's own offset (`onScrollOffsetChange`). Nothing per-frame reaches the JS thread unless you pass a plain function. There is no synchronous "read the position now" call, and no built-in save/restore across remounts yet; you can *drive* positions through the [`ref`](/api/ref).
@@ -11,3 +29,5 @@ Read this before choosing the library. These are real constraints, not roadmap f
 - **Pull-to-refresh is the platform's own indicator** (a `UIActivityIndicatorView` on iOS, `SwipeRefreshLayout` on Android). Threshold, resting offset, colours and size are props; a fully custom indicator component driven natively is not supported yet. On iOS you can hide the native one and draw your own from `onHeaderOffsetChange`'s `pull`.
 - **Pages stay mounted once visited** (`lazy` only defers the first mount). A page mounts as soon as any sliver of it peeks in during a swipe, not when the swipe settles, so its data fetch starts if you drag toward it and change your mind.
 - **No web / Expo Go support.** Native code; works in Expo dev clients and prebuild.
+
+If one of these rules you out, [Alternatives](/guide/alternatives) describes what a JS or Reanimated implementation offers instead.

@@ -1,6 +1,11 @@
-# `<TabBar>`
+---
+title: TabBar, Pinned Tab Bar Component
+description: The bundled pinned tab bar for React Native collapsible tabs, with an underline that tracks the swipe, and how to replace it with your own.
+---
 
-The default strip: labels with an underline that tracks the finger during a swipe. Scrolls when the tabs overflow. Used by `CollapsibleTabView` unless you pass `renderTabBar`; configure it through `tabBarProps`, or render it yourself from a custom `renderTabBar`.
+# `TabBar`: the pinned tab bar
+
+`TabBar` is the pinned tab strip that sits under the collapsing header. The default strip: labels with an underline that tracks the finger during a swipe. Scrolls when the tabs overflow. Used by `CollapsibleTabView` unless you pass `renderTabBar`; configure it through `tabBarProps`, or render it yourself from a custom `renderTabBar`.
 
 ```tsx
 import { TabBar } from 'react-native-collapsible-tabs-native';

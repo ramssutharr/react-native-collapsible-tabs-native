@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://ramssutharr.github.io/react-native-collapsible-tabs-native/sitemap.xml

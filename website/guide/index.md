@@ -1,3 +1,8 @@
+---
+title: Introduction to Native Collapsible Tabs for React Native
+description: Native collapsible tabs for React Native, a collapsing header with a pinned tab bar over a swipeable pager, driven by UIKit and ViewPager2 so the header and list move in the same frame.
+---
+
 # Introduction
 
 Native **collapsible tabs** for React Native: a collapsing header with a pinned tab bar over a swipeable tab pager, the Instagram and Twitter profile layout, where the collapse is driven by **native code** (UIKit on iOS, `ViewPager2` on Android), not by a JS or Reanimated worklet.
@@ -5,6 +10,10 @@ Native **collapsible tabs** for React Native: a collapsing header with a pinned 
 Because the header is translated inside the same native scroll callback that moves the list, the header, tab bar and list content always move **in the same frame**. There is no per-frame JS work in the scroll path, so heavy JS load cannot desynchronise them.
 
 Your header, tab bar and tab pages are ordinary React components. The native side only owns geometry and gestures.
+
+## React Native collapsible tabs for Instagram-style profiles
+
+This layout is the top of Instagram, Twitter/X and LinkedIn profiles, and of most feeds: a profile header collapses as the content scrolls, the tab bar stays pinned under it, and each tab keeps its own scroll position while neighbouring tabs are aligned to the header as you swipe. That whole behaviour is what the shell owns; you supply the header, the tabs and the lists. See the [collapsible header guide](/guide/collapsible-header) for the header side and the [FlashList guide](/guide/flashlist) for the lists.
 
 ## What it does
 
@@ -24,7 +33,7 @@ Your header, tab bar and tab pages are ordinary React components. The native sid
 
 ## What it does not do
 
-Read [the limitations](/guide/limitations) before choosing the library. In short: Fabric only, React Native ≥ 0.80, no web or Expo Go, no synchronous "read the position now" call, and the platform's own refresh indicator.
+Read [Limitations & compatibility](/guide/limitations) before choosing the library. In short: Fabric only, React Native ≥ 0.80, no web or Expo Go, no synchronous "read the position now" call, and the platform's own refresh indicator. If you are weighing it against a JS or Reanimated implementation, [Alternatives](/guide/alternatives) lays out the trade-off.
 
 ## Where it is used
 

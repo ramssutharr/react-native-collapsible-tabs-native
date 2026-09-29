@@ -1,3 +1,8 @@
+---
+title: Recipes
+description: Tap-to-top, a pinned filter bar on one tab, sticky section headers in FlashList, a finger-tracking tab indicator and a shrinking avatar with React Native collapsible tabs.
+---
+
 # Recipes
 
 ## Tap the active tab again to scroll to top

@@ -1,3 +1,8 @@
+---
+title: ref, Imperative API for Collapsible Tabs
+description: The CollapsibleTabsRef methods, scrollToTop, setIndex, collapse and expand, for driving a native collapsible header and tab pager in React Native.
+---
+
 # `ref`: the imperative API
 
 `CollapsibleTabView` and `CollapsibleTabsShell` accept a `ref` of type `CollapsibleTabsRef`.

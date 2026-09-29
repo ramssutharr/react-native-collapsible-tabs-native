@@ -1,4 +1,26 @@
-# How it works
+---
+title: How Native Collapsible Tabs Work in React Native
+description: The architecture of a native collapsible header in React Native, Fabric children re-parented into a UIScrollView or ViewPager2 shell whose native scroll callback moves the header in the same frame as the list.
+---
+
+# How native collapsible tabs work in React Native
+
+```
+React (your header, tab bar, pages)
+        │  Fabric mounts them as children of one native view
+        ▼
+Native shell  ──  re-parents by nativeID into slots
+        │
+        ├── bands: header + tab bar in one RN ScrollView, drawn above the pager
+        └── pager: paging UIScrollView (iOS) / ViewPager2 (Android)
+                │
+                ▼
+        the active page's vertical scroll view, observed natively
+                │  scrollViewDidScroll / OnScrollChangeListener
+                ▼
+        bands.contentOffset = clamp(list offset, 0, headerHeight)
+        written in the same callback, before the frame is drawn
+```
 
 Fabric mounts your header, tab bar and pages as children of the native view. The native side re-parents them by `nativeID` into slots: the two bands (the header over the tab bar, inside one non-scrollable React Native `ScrollView`) drawn above a horizontal pager, which is a paging `UIScrollView` on iOS and a `ViewPager2` on Android.
 
@@ -30,3 +52,10 @@ The native code is small and commented. Two files matter:
 - [`android/src/main/java/com/collapsibletabs/ui/CollapsibleTabsHostView.kt`](https://github.com/ramssutharr/react-native-collapsible-tabs-native/blob/main/android/src/main/java/com/collapsibletabs/ui/CollapsibleTabsHostView.kt)
 
 Everything RN-specific on iOS (finding a page's `RCTScrollViewComponentView`, registering as its scroll listener) lives in the Objective-C++ bridge, so the Swift file stays plain UIKit.
+
+## See also
+
+- [Benchmarks](/benchmarks): the claim above, measured
+- [Alternatives](/guide/alternatives): how JS and Reanimated implementations differ
+- [Limitations & compatibility](/guide/limitations)
+- [`CollapsibleTabView` API](/api/collapsible-tab-view)

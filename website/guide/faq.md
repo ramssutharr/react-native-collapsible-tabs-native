@@ -1,3 +1,8 @@
+---
+title: FAQ
+description: Answers on react-native-collapsible-tab-view migration, React Navigation, pinning inside the header, sticky headers, Animated.event, expand in direction mode, empty tabs and Jest.
+---
+
 # FAQ
 
 ## Is this a drop-in replacement for react-native-collapsible-tab-view or react-native-tab-view?
