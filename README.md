@@ -29,13 +29,13 @@ side only owns geometry and gestures.
 
 ## Why not a JS implementation?
 
-JS collapsible-tab libraries (including ones built on Reanimated) move the
-list content from the native scroll view but move the header from an
-animation callback fed by that scroll's *event*. Two update paths mean the
-header runs at least one frame behind the list — visible as a gap opening
-between the tab bar and the content on a fast fling, worst on Android and on
-iOS whenever the JS thread is busy. This library removes the second update
-path instead of trying to keep up with it.
+In implementations where the list moves natively while the header is updated
+through a separate scroll-event / animation path, the header can lag behind
+the list during fast flings, especially under JS-thread load — visible as a
+gap opening between the tab bar and the content, most often on Android and on
+iOS whenever the JS thread is busy. This library removes that second update
+path by translating the header inside the same native callback that moves the
+list.
 
 Measured, not asserted: on a mid-range 120 Hz Android phone with the JS thread
 60 % busy, flinging a 500-row list gives 0 % janky frames and a p99 of 12 ms —

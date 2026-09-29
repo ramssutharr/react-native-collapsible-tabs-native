@@ -17,7 +17,7 @@ There are three ways to build a collapsing header over a tab pager in React Nati
 
 ### JS-driven
 
-The list is a native scroll view; its `onScroll` event reaches JS, and an `Animated.event` or a state update translates the header. Simple and dependency-free, but the header is at least one frame behind the list by construction, and any JS work (rendering rows, a network response) delays it further. On Android the event itself is throttled. You see it as a gap opening under the tab bar on a fast fling.
+The list is a native scroll view; its `onScroll` event reaches JS, and an `Animated.event` or a state update translates the header. Simple and dependency-free, but the header is updated from a separate path than the list, so it can lag behind the native list during fast flings, and any JS work (rendering rows, a network response) delays it further. On Android the event itself is throttled. You see it as a gap opening under the tab bar on a fast fling.
 
 ### Reanimated-driven
 

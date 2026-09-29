@@ -9,7 +9,7 @@ A **collapsible header** scrolls away as the content below it scrolls up and com
 
 ## What is a collapsible header?
 
-Three parts move together: the header band, the tab bar under it, and the active page's list. As the list scrolls by `y`, the header translates up by `min(y, headerHeight)`; when the list is at its top the header is fully open. What makes the effect hard is keeping the three in the same frame. A header translated from the list's scroll *event* is always a frame late, which shows as a gap under the tab bar on a fling. Here the header is moved inside the same native scroll callback that moved the list, so it cannot lag; see [How it works](/guide/how-it-works).
+Three parts move together: the header band, the tab bar under it, and the active page's list. As the list scrolls by `y`, the header translates up by `min(y, headerHeight)`; when the list is at its top the header is fully open. What makes the effect hard is keeping the three in the same frame. A header translated from the list's scroll *event* through a separate animation path can lag behind the list on a fast fling, especially under JS-thread load, which shows as a gap under the tab bar. Here the header is moved inside the same native scroll callback that moved the list, so it cannot lag; see [How it works](/guide/how-it-works).
 
 ## The header is a plain component
 
