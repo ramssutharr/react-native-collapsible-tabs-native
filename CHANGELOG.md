@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 — 2026-10-30
 
 - Fix (Android): a horizontal list inside a tab page (a carousel, a chip row,
   a story strip) could switch tabs when dragged sideways. ViewPager2 sees the
