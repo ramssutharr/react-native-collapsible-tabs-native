@@ -37,6 +37,10 @@ Intentional. Direction mode's whole contract is that the header can be open over
 
 `allowFullCollapse` (on by default) gives a page exactly the scroll range it lacks, so an empty state can be pushed up and the header collapses on every tab alike. A tab that can't scroll reads as a broken screen. Pass `false` for the Twitter-style alternative, where the header eases back to whatever a short tab can hold.
 
+## A horizontal list inside a tab switches tabs when I scroll it.
+
+Fixed in 0.9.1 on Android (iOS never had it, UIKit arbitrates nested scroll views itself): a sideways drag on a carousel, chip row or story strip inside a page scrolls that list, and only at the list's edge does the pager take over, as native Android does. No `swipeEnabled={false}` needed. The example app's Posts tab carries a horizontal strip for exactly this.
+
 ## A horizontal list in my header fights the header drag.
 
 It shouldn't since 0.5.2: a sideways drag belongs to the list, a vertical one to the page, decided from the gesture's translation and committed once per gesture, on both header and tab-bar bands. If you still see both moving at once, that's a bug. Please [report it](https://github.com/ramssutharr/react-native-collapsible-tabs-native/issues) with the list component you use.

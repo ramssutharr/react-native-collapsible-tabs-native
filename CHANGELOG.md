@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Fix (Android): a horizontal list inside a tab page (a carousel, a chip row,
+  a story strip) could switch tabs when dragged sideways. ViewPager2 sees the
+  horizontal move before the list does, and React Native's horizontal
+  `ScrollView` never asks its parents not to intercept, so the pager won.
+  The shell now decides once per gesture from the drag's direction: if a
+  horizontally scrollable view under the finger can still scroll that way,
+  the pager is told not to intercept and the list owns the drag; at the
+  list's edge the pager takes it, as native Android does. iOS already
+  arbitrated this through UIKit's nested scroll-view rules. Closes #3.
+
 ## 0.9.0 — 2026-09-11
 
 - New: `onScrollOffsetChange` — the active list's live scroll offset

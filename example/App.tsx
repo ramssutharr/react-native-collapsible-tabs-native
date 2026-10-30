@@ -388,6 +388,22 @@ export default function App() {
               data={POSTS}
               keyExtractor={item => item}
               renderItem={({ item }) => <Row label={item} />}
+              // A horizontal list INSIDE a page: a sideways drag on it must
+              // scroll the strip, not switch tabs (issue #3).
+              ListHeaderComponent={
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chips}
+                >
+                  {CHIPS.map(chip => (
+                    <View key={chip} style={styles.story}>
+                      <View style={styles.storyRing} />
+                      <Text style={styles.chipLabel}>{chip}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              }
             />
           );
         case 'short':
@@ -546,6 +562,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef1f6',
   },
   chipLabel: { fontSize: 13, fontWeight: '500', color: '#334' },
+  story: { alignItems: 'center', gap: 6, width: 72 },
+  storyRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: '#5b8def',
+    backgroundColor: '#eef1f6',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

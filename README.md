@@ -455,6 +455,11 @@ tab alike. A tab that can't scroll reads as a broken screen. Pass `false` for
 the Twitter-style alternative, where the header eases back to whatever a
 short tab can hold.
 
+**A horizontal list inside a tab switches tabs when I scroll it.**
+Fixed in 0.9.1 on Android (iOS never had it): a sideways drag on a carousel,
+chip row or story strip inside a page scrolls that list, and only at the
+list's edge does the pager take over. No `swipeEnabled={false}` needed.
+
 **A horizontal list in my header fights the header drag.**
 It shouldn't since 0.5.2: a sideways drag belongs to the list, a vertical one
 to the page — decided from the gesture's translation, committed once per

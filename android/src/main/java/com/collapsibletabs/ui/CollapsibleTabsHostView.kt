@@ -1164,6 +1164,8 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
         private var downOnBand = false
         private var downOnHorizontalScrollable = false
         private var forwarding = false
+        /** A page touch has been judged for nested horizontal scrolling. */
+        private var nestedDecided = false
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val width = MeasureSpec.getSize(widthMeasureSpec)
@@ -1219,6 +1221,56 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
             return false
         }
 
+        /**
+         * The deepest horizontally scrollable view under the point that can
+         * still scroll in [direction] (−1 = content moves right / finger
+         * drags right, +1 the other way). Coordinates local to [view].
+         */
+        private fun horizontallyScrollableViewAt(view: View, x: Float, y: Float, direction: Int): View? {
+            if (x < 0f || y < 0f || x > view.width || y > view.height) return null
+            if (view is ViewGroup) {
+                for (i in view.childCount - 1 downTo 0) {
+                    val child = view.getChildAt(i)
+                    if (child.visibility != View.VISIBLE) continue
+                    val cx = x - child.left - child.translationX + view.scrollX
+                    val cy = y - child.top - child.translationY + view.scrollY
+                    horizontallyScrollableViewAt(child, cx, cy, direction)?.let { return it }
+                }
+            }
+            return if (view.canScrollHorizontally(direction)) view else null
+        }
+
+        /**
+         * A horizontal list INSIDE a page (a carousel, a chip row, a story
+         * strip) must own a sideways drag that it can consume; otherwise
+         * ViewPager2 intercepts the move first and the drag switches tabs.
+         * RN's horizontal ScrollView never asks its parents not to intercept,
+         * so the host does it for it — the "nested scrollable host" pattern,
+         * decided once per gesture from the drag's direction. At the list's
+         * edge the pager takes the drag, as native Android does.
+         */
+        private fun disallowPagerInterceptForNestedHorizontal(ev: MotionEvent): Boolean {
+            val dx = ev.x - downX
+            val dy = ev.y - downY
+            if (kotlin.math.abs(dx) <= touchSlop) return false
+            nestedDecided = true
+            if (kotlin.math.abs(dx) <= kotlin.math.abs(dy) * 0.5f) return false
+            val slot = pageSlots.get(activeIndex) ?: return false
+            getLocationInWindow(tmpLoc)
+            slot.getLocationInWindow(tmpLoc2)
+            val direction = if (dx > 0f) -1 else 1
+            val target = horizontallyScrollableViewAt(
+                slot,
+                downX - (tmpLoc2[0] - tmpLoc[0]),
+                downY - (tmpLoc2[1] - tmpLoc[1]),
+                direction,
+            ) ?: return false
+            // Must be a view INSIDE the page, not the pager's own RecyclerView.
+            if (target === slot) return false
+            (pager.getChildAt(0) as? RecyclerView)?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+
         /** Where forwarded events go: the active page's scroll view, or null
          *  to swallow the gesture (horizontal drag on the header: inert by
          *  design, but it must still cancel the press under the finger). */
@@ -1255,9 +1307,14 @@ class CollapsibleTabsHostView(context: Context) : ViewGroup(context) {
                         )
                     forwarding = false
                     forwardTarget = null
+                    nestedDecided = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (!downOnBand || forwarding) return forwarding
+                    if (!downOnBand) {
+                        if (!nestedDecided) disallowPagerInterceptForNestedHorizontal(ev)
+                        return false
+                    }
+                    if (forwarding) return true
                     val dx = ev.x - downX
                     val dy = ev.y - downY
                     val vertical = kotlin.math.abs(dy) > touchSlop && kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.5f
