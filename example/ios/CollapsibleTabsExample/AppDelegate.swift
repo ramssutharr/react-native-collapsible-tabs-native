@@ -21,15 +21,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    // The window and the React Native root are created by SceneDelegate:
+    // apps built with the iOS 27 SDK must use the UIScene life cycle or they
+    // trap on launch (`__UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`).
+    // The factory lives here so it survives scene reconnects.
+    return true
+  }
+}
+
+/// UIScene life cycle: owns the window and starts React Native in it.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+          let factory = appDelegate.reactNativeFactory else { return }
+
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+    appDelegate.window = window
 
     factory.startReactNative(
       withModuleName: "CollapsibleTabsExample",
       in: window,
-      launchOptions: launchOptions
+      launchOptions: nil
     )
-
-    return true
   }
 }
 
