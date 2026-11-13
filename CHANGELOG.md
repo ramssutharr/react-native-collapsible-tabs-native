@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.2 — 2026-11-13
 
 - Fix (iOS): with the header open, a fling that started on the header could
   not be reversed mid-flight by a fling on the list. A header-started fling
