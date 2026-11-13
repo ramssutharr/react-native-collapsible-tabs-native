@@ -528,6 +528,13 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// (The Android side does the same from `dispatchTouchEvent`.)
   public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
     let hit = super.hitTest(point, with: event)
+    // A band-started fling runs on OUR display link, not UIKit's
+    // deceleration, so nothing stops it when the next finger lands on the
+    // LIST: UIKit begins tracking the drag while the driver keeps writing
+    // contentOffset every frame over it, and a fling down mid-flight goes
+    // nowhere. A finger anywhere in the shell means "hold still".
+    fling?.stop()
+    fling = nil
     let overBand = bandsSlot.bounds.contains(convert(point, to: bandsSlot))
     if overBand {
       // A touch landing on a band stops the page's momentum, exactly as a
@@ -800,6 +807,9 @@ public final class NativeCollapsibleTabsContent: UIView, UIScrollViewDelegate, U
   /// screen's touches from here.
   @objc public func handleScrollViewWillBeginDragging(_ scrollView: UIScrollView) {
     guard scrollView.isDescendant(of: self) else { return }
+    // Belt and braces for the case above: the list itself says a drag began.
+    fling?.stop()
+    fling = nil
     cancelReactTouches?()
   }
 

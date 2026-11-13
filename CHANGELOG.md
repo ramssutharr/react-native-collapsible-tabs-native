@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix (iOS): with the header open, a fling that started on the header could
+  not be reversed mid-flight by a fling on the list. A header-started fling
+  runs on the shell's own display link rather than UIKit's deceleration, and
+  only a touch on a band stopped it; a finger landing on the list left the
+  driver writing `contentOffset` every frame over the new drag. Any touch in
+  the shell, and the list's own drag start, now stop it.
+
 ## 0.9.1 — 2026-10-30
 
 - Fix (Android): a horizontal list inside a tab page (a carousel, a chip row,
